@@ -1,0 +1,266 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Pihole Stack
+
+Parameters:
+  # Pihole admin password
+  PiHolePassword:
+    Type: String
+    Default: my-password-is-password
+    Description: Pihole admin password
+
+  # OpenVPN UDP port
+  OpenVPNPort:
+    Type: Number
+    Default: 1194
+    Description: OpenVPN UDP port
+
+  #	SSH Key for the OpenVPN Instance
+  SSHKeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: SSH Key for the OpenVPN Instance
+    ConstraintDescription: Must be the name of an existing EC2 KeyPair.
+
+  # CIDR IP to be granted access by the SG, use 0.0.0.0/0 to accept all IPs
+  ClientIPCIDR:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR IP to be granted access by the SG, use 0.0.0.0/0 to accept all IPs.
+
+  # Choose the os AMI, this is poplated with the latest version of Amazon Linux2
+  AMIId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+    Description: AMI that you want to use. Default is the latest version of Amazon Linux2.
+  # Route53 ZoneId	
+  Route53zoneId:
+    Type: String
+    Description: Route 53 ZoneId for the domain you will associate with the server.
+  # Domain Name
+  DomainName:
+    Type: String
+    Description: The domain name to be associated with the server.
+  # EC2 Instance Type
+  EC2InstanceType:
+    Type: String
+    Default: t3.nano
+    Description: EC2 Instance Type. 
+  # Availability zone for the subnet where the EC2 instance will be created. It must match the location of your EBS volume.
+  SubnetAZ:
+    Type: String
+    Description: Availability zone for the subnet where the EC2 instance will be created. It must match the location of your EBS volume.
+  #EBS Volume ID. You need to create and format an EBS volume prior to running this template.
+  #The EBS volume is where the persistent files are located like settings and keys.
+  #The volume will have to be attached to an EC2 instance and then formatted with sudo mkfs -t ext4 device_name
+  EBSVolumeID:
+    Type: String
+    Description: EBS Volume ID where psersistent files are stored.
+
+Resources:
+
+  # Our VPC, most of our resources will be provisioned within
+  myVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 192.168.1.0/22 # We only need 1 IPaddress for our OpenVPN server.
+      Tags:
+      - Key: Name
+        Value: pihole-vpc
+
+  # The only subnet we will create within our VPC, our docker server will be provisioned within
+  # This subnet will be assigned a default route out to the internet, hence the name.
+  MyPublicSubnet:
+    Type: AWS::EC2::Subnet
+    DependsOn: myVPC
+    Properties:
+      VpcId: !Ref myVPC
+      CidrBlock: 192.168.1.0/24 # 8-bit subnet provides 256 addresses, 251 of which are usable
+      Tags:
+      - Key: Name
+        Value: pihole-publicSubnet
+      AvailabilityZone: !Ref SubnetAZ
+
+  # We will need our VPC to have access to the internet
+  myInternetGateway:
+      Type: "AWS::EC2::InternetGateway"
+      Properties:
+        Tags:
+        - Key: Name
+          Value: pihole-IGW
+
+  # The VPC route table
+  myRouteTablePublic:
+      Type: "AWS::EC2::RouteTable"
+      Properties:
+        VpcId: !Ref myVPC
+        Tags:
+          - Key: Name
+            Value: pihole-myRouteTablePublic
+
+  # Attach the Internet Gateway to myVPC
+  AttachInternetGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref myVPC
+      InternetGatewayId: !Ref myInternetGateway
+
+  # Add a default route to our VPCs internet gateway
+  RouteDefaultPublic:
+    Type: "AWS::EC2::Route"
+    DependsOn: myInternetGateway
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref myInternetGateway
+      RouteTableId: !Ref myRouteTablePublic
+
+  # Associate our route table to our subnet
+  MyPublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref MyPublicSubnet
+      RouteTableId: !Ref myRouteTablePublic
+
+  # Request a new Elastic IP Address
+  myEIP:
+    Type: "AWS::EC2::EIP"
+    Properties:
+      Domain: vpc
+
+  # Bind our Elastic IP Address to an Elastic Network Interface
+  AssociateManagementAccessPort:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt myEIP.AllocationId
+      NetworkInterfaceId: !Ref myNetworkInterface
+
+  # Create a security group for the ENI that will be attached to our OpenVPN server
+  # OpenVPN and SSH port access
+  OpenVPNInstanceSG:
+    Type: AWS::EC2::SecurityGroup
+    DependsOn: myVPC
+    Properties:
+      GroupName: pihole-security-group
+      GroupDescription: SG for pihole Server
+      VpcId: !Ref myVPC
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all traffic to port 80
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all traffic to port 443
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all traffic to port 53/tcp
+          IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all traffic to port 53/udp
+          IpProtocol: udp
+          FromPort: 53
+          ToPort: 53	  
+        - CidrIp: !Ref ClientIPCIDR
+          Description: OpenVPN Port
+          IpProtocol: udp
+          FromPort: !Ref OpenVPNPort
+          ToPort: !Ref OpenVPNPort
+        - CidrIp: !Ref ClientIPCIDR
+          Description: SSH Port
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+  # This is the IAM role which will be associated with our EC2 instance
+  myEC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+
+  # Binding profile for our myEC2InstanceRole to the actual EC2 instance
+  ec2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+       - !Ref myEC2InstanceRole
+
+  # The Elastic Network Interface which will be attached to our EC2 instance
+  # Our security group, OpenVPNInstanceSG is also associated with this interface
+  myNetworkInterface:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref MyPublicSubnet
+      Description: Public Interface
+      GroupSet:
+      - !Ref OpenVPNInstanceSG
+      SourceDestCheck: false
+      Tags:
+        -
+          Key: Name
+          Value: Public ENI
+  # Bind your domain name to the elastic IP
+  myDNSRecord:
+    Type: AWS::Route53::RecordSet
+    DependsOn: myEIP
+    Properties:
+      HostedZoneId: !Ref Route53zoneId
+      Comment: DNS name for my instance.
+      Name: !Ref DomainName
+      Type: A
+      TTL: '900'
+      ResourceRecords:
+      - !Ref myEIP
+  
+  # The EC2 instance with docker and containers for pihole and openvpn
+  piholeEC2Instance:
+    Type: "AWS::EC2::Instance"
+    DependsOn: [myEIP, OpenVPNInstanceSG]
+    Properties:
+      ImageId: !Ref AMIId
+      InstanceType: !Ref EC2InstanceType
+  # You need to create an EBS volume separately so it will persist outside of the template
+      Volumes: 
+        -
+          VolumeId: !Ref EBSVolumeID
+          Device: /dev/sdh 
+      UserData:
+        "Fn::Base64":
+          !Sub |
+            #!/bin/bash
+            mkdir /mnt/dockershare
+            mount /dev/sdh /mnt/dockershare
+            amazon-linux-extras install docker -y
+            yum update -y
+            service docker start
+            docker run -d --name pihole -p 53:53/tcp -p 53:53/udp -p 80:80 -e TZ=EST -e ServerIP=${myEIP} -e VIRTUAL_HOST=pihole.clouderic.net -e WEBPASSWORD=${PiHolePassword} --restart=unless-stopped -v /mnt/dockershare/pihole:/etc/pihole -v /mnt/dockershare/dnsmasq.d:/etc/dnsmasq.d pihole/pihole					
+            docker run -v /mnt/dockershare/ovpn-data:/etc/openvpn -d -p ${OpenVPNPort}:1194/udp --cap-add=NET_ADMIN --name openvpn --restart=unless-stopped kylemanna/openvpn		
+      SourceDestCheck: false
+      KeyName: !Ref SSHKeyName
+      NetworkInterfaces:
+        -
+          NetworkInterfaceId: !Ref myNetworkInterface
+          DeviceIndex: 0
+      IamInstanceProfile: !Ref ec2InstanceProfile
+      Tags:
+        -
+          Key: Name
+          Value: pihole-EC2
+
+Outputs:
+  myEIPOut:
+    Description: Instance EIP
+    Value: !Ref myEIP
+  EC2OpenVPNInstanceOut:
+    Description: EC2 Instance
+    Value: !Ref piholeEC2Instance
