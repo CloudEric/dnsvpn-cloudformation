@@ -1,7 +1,7 @@
 # A CloudFormation Template for Deploying an Ad-Blocking DNS Server
 
 ## Table of contents
-<a href="https://aws.amazon.com/"><img src="./images/CloudFormation_old.png" width="120" align="right"></a>
+<a href="https://aws.amazon.com/cloudformation/"><img src="./images/CloudFormation_old.png" width="240" align="right"></a>
 1. [Project Outline](#Outline)
     - [Project Progress](#Progress)
     - [Key Technologies](#Technologies)
@@ -49,15 +49,15 @@ This project is a CloudFormation template coded in YAML. I’m leveraging the fo
 Docker containers are used for ease of management.
 
 <a href="https://pi-hole.net/"><img src="./images/pi-hole.png" width="120" align="left"></a>
-<br><br><br>
+<br><br>
 Pi-hole is an open source dns server that acts as a relay and blocks ads based on black and white lists. It was originally designed for the Raspberry Pi so it's extremely lightweight and fast.
 <br><br><br><br>
  <a href="https://openvpn.net/"><img src="./images/openvpn.png" width="120" align="right"></a>
- <br>
+<br>
 OpenVPN is the standard in open source VPN tunnels. This project configures it as a split tunnel so it only routes DNS queries and allows you to maintain optimal performance for all other network communications.
 
 <a href="https://github.com/v2tec/watchtower"><img src="./images/container.png" width="120" align="left"></a>
-<br><br><br>
+<br><br>
 Watchtower monitors docker images and restarts the containers so that the stack remains updated.
 <br><br><br>
 <a name="Resolver"></a>
@@ -195,7 +195,7 @@ These are parameters that will need to be populated before executing the stack. 
 - The availability zone for the subnet where the EC2 instance will be created. It must match the location of your EBS volume.
 
 ##### EBSVolumeID
-- You need to create and format an EBS volume prior to running this template. This will be used as the docker Blind mount for storing persistent data such as configuration and keys. Before you successfully run the template for the first time you will need to attach the volume to an and formatted with the following command.
+- You need to create and format an EBS volume prior to running this template. This will be used as the docker Blind mount for storing persistent data such as configuration and keys. Before you successfully run the template for the first time you will need to attach the volume to an EC2 instance and format it with the following command:
 
       sudo mkfs -t ext4 device_name
 ---
@@ -203,7 +203,7 @@ These are parameters that will need to be populated before executing the stack. 
 ## Troubleshooting
 
 - The most difficult part I encountered is correctly configuring the VPN routes so that the tunnel is correctly split and only forwards DNS traffic.
-- If you receive a TLS error then it's probably an issue with the route on your local network. If the DNS isn't resolving then it's probably and issue with the route to your DNS server. You can view your route configuration in the following location.
+- If you receive a TLS error then it's probably an issue with the route on your local network. If the DNS isn't resolving then it's probably and issue with the route to your DNS server. You can view your route configuration in the following location:
 
       /mnt/dockershare/ovpn-data/openvpn.conf
 ---
