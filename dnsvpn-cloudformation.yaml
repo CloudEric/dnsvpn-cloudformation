@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Pihole Stack
-
+#v1.5 added watchtower and updated pihole docker
 Parameters:
   # Pihole admin password
   PiHolePassword:
@@ -243,8 +243,9 @@ Resources:
             amazon-linux-extras install docker -y
             yum update -y
             service docker start
-            docker run -d --name pihole -p 53:53/tcp -p 53:53/udp -p 80:80 -e TZ=EST -e ServerIP=${myEIP} -e VIRTUAL_HOST=pihole.clouderic.net -e WEBPASSWORD=${PiHolePassword} --restart=unless-stopped -v /mnt/dockershare/pihole:/etc/pihole -v /mnt/dockershare/dnsmasq.d:/etc/dnsmasq.d pihole/pihole					
-            docker run -v /mnt/dockershare/ovpn-data:/etc/openvpn -d -p ${OpenVPNPort}:1194/udp --cap-add=NET_ADMIN --name openvpn --restart=unless-stopped kylemanna/openvpn		
+            docker run -d --name pihole -p 53:53/tcp -p 53:53/udp -p 80:80 -e TZ=EST -e ServerIP=${myEIP} -e VIRTUAL_HOST=pihole.clouderic.net -e WEBPASSWORD=${PiHolePassword} --restart=unless-stopped --cap-add=NET_ADMIN --dns=127.0.0.1 --dns=1.1.1.1 -v /mnt/dockershare/pihole:/etc/pihole -v /mnt/dockershare/dnsmasq.d:/etc/dnsmasq.d pihole/pihole					
+            docker run -v /mnt/dockershare/ovpn-data:/etc/openvpn -d -p ${OpenVPNPort}:1194/udp --cap-add=NET_ADMIN --name openvpn kylemanna/openvpn
+            docker run -d --name watchtower -v /var/run/docker.sock:/var/run/docker.sock --restart=unless-stopped v2tec/watchtower --cleanup -s "0 0 * * 1"			
       SourceDestCheck: false
       KeyName: !Ref SSHKeyName
       NetworkInterfaces:
