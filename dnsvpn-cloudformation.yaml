@@ -1,0 +1,575 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Pi-hole Stack v2.0
+
+Parameters:
+  PiHolePassword:
+    Type: String
+    NoEcho: true
+    Default: my-password-is-password
+    Description: Pi-hole admin password for the web interface.
+  # OpenVPN UDP port
+  OpenVPNPort:
+    Type: Number
+    Default: 1194
+    Description: The port used for VPN connections.
+  VPNClientKey:
+    Type: String
+    Default: DNSVPN
+    Description: File name for the ovpn file that will be copied to the VPN client.
+  # Root Certificate Key, the password for the Root Certificate
+  VPNCAKey:
+    Type: String
+    NoEcho: true
+    Default: DNS_cert
+    Description: Password for the root certificate.
+  # Certificate Authority Common Name.
+  VPNCACN:
+    Type: String
+    Default: pihole
+    Description: This is the name of the certificate, typically corresponding with the name of the service.	
+  #	SSH Key for the EC2 Instance. This is only needed for troubleshooting.
+  SSHKeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: SSH Key for the EC2 Instance
+    ConstraintDescription: REQUIRED
+  ClientIPCIDR:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR IP to be granted access by the SG, use 0.0.0.0/0 to accept all IPs.
+  # OS Imaage
+  AmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+    Description: AMI that you want to deploy. Default is the latest version of Amazon Linux2.
+  # Route53 ZoneId	
+  Route53zoneId:
+    Type: String
+    Description: Route 53 ZoneId for the domain you will associate with the server.
+  DomainName:
+    Type: String
+    Description: Your web address when connecting to Pi-hole
+  EC2InstanceType:
+    Type: String
+    Default: t3.nano
+    Description: The default is the cheapest option. If you are in the 12 month free teir then a t2.micro may be more cost effective. 
+  # Availability zone for the subnet where the EC2 instance will be created.
+  SubnetAZ:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Description: Availability Zone where everything will be located.
+  #Reuse EBS volume or leave blank to create a new one
+  ReuseEBS: 
+    Description: Leave empty if you have never run this template before.
+    Type: String
+  HomeNW: 
+    Description: Specify your home network if you wish to use the pihole at home. Typically 192.168.0.0 or 10.0.0.0
+    Type: String
+  HomeSN: 
+    Description: Specify you home subnet if you wish to use the pihole at home. Typically 255.255.255.0
+    Type: String
+
+# Organize how the paramaters appear in CloudFormation	
+Metadata: 
+  AWS::CloudFormation::Interface: 
+    ParameterGroups: 
+      - 
+        Label: 
+          default: "Software Configuration"
+        Parameters:
+          - ReuseEBS
+          - PiHolePassword
+      - 
+        Label: 
+          default: "EC2 Configuration"
+        Parameters: 
+          - EC2InstanceType
+          - AmiId
+          - SSHKeyName
+      - 
+        Label: 
+          default: "Network Configuration"
+        Parameters: 
+          - Route53zoneId
+          - DomainName
+          - ClientIPCIDR
+          - SubnetAZ
+      - 
+        Label: 
+          default: "VPN Configuration"
+        Parameters: 
+          - VPNClientKey
+          - VPNCAKey
+          - VPNCACN
+          - OpenVPNPort
+          - HomeNW
+          - HomeSN
+    # Readable names for the paramaters.		  
+    ParameterLabels: 
+      ReuseEBS: 
+        default: "Reuse EBS Snapshot"
+      PiHolePassword: 
+        default: "Pi-hole Password"
+      EC2InstanceType: 
+        default: "EC2 Instance Type"
+      AmiId: 
+        default: "AMI Id"
+      SSHKeyName: 
+        default: "KeyPair"
+      Route53zoneId: 
+        default: "Route 53 Zone ID"
+      DomainName: 
+        default: "Domain Name"
+      ClientIPCIDR: 
+        default: "Client CIDR"
+      SubnetAZ: 
+        default: "Availability Zone"
+      VPNClientKey: 
+        default: "Client Key"
+      VPNCAKey: 
+        default: "Root Certificate Key"
+      VPNCACN: 
+        default: "Certificate Authority Common Name"
+      OpenVPNPort: 
+        default: "OpenVPN UDP Port"
+      HomeNW: 
+        default: "Home Network"
+      HomeSN: 
+        default: "Home Subnet"
+
+# If you specify an EBS snapshot in the paramaters then assign the EBS snapshot ID that will be used for EBS creation.
+# This is the magic that allows us to use a persistent docker blind mount.
+Conditions:
+  ExistingEBS: !Not [!Equals [!Ref ReuseEBS, ""]]
+  NewEBS: !Equals [!Ref ReuseEBS, ""]
+
+Resources:
+  # The VPC where most of the resources are provisioned.
+  myVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 192.168.1.0/22 # We only need 1 IPaddress for the OpenVPN server.
+      Tags:
+      - Key: Name
+        Value: pihole-vpc
+  # The only subnet we will create within the VPC, the docker server will be provisioned within
+  # This subnet will be assigned a default route out to the internet, hence the name.
+  MyPublicSubnet:
+    Type: AWS::EC2::Subnet
+    DependsOn: myVPC
+    Properties:
+      VpcId: !Ref myVPC
+      CidrBlock: 192.168.1.0/24 # 8-bit subnet provides 256 addresses, 251 of which are usable
+      Tags:
+      - Key: Name
+        Value: pihole-publicSubnet
+      AvailabilityZone: !Ref SubnetAZ
+  # We will need the VPC to have access to the internet.
+  myInternetGateway:
+      Type: "AWS::EC2::InternetGateway"
+      Properties:
+        Tags:
+        - Key: Name
+          Value: pihole-IGW
+  # The VPC route table.
+  myRouteTablePublic:
+      Type: "AWS::EC2::RouteTable"
+      Properties:
+        VpcId: !Ref myVPC
+        Tags:
+          - Key: Name
+            Value: pihole-myRouteTablePublic
+  # Attach the Internet Gateway to myVPC.
+  AttachInternetGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref myVPC
+      InternetGatewayId: !Ref myInternetGateway
+  # Add a default route to the VPCs internet gateway.
+  RouteDefaultPublic:
+    Type: "AWS::EC2::Route"
+    DependsOn: myInternetGateway
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref myInternetGateway
+      RouteTableId: !Ref myRouteTablePublic
+  # Associate the route table to the subnet.
+  MyPublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref MyPublicSubnet
+      RouteTableId: !Ref myRouteTablePublic
+  # Request a new Elastic IP Address.
+  myEIP:
+    Type: "AWS::EC2::EIP"
+    Properties:
+      Domain: vpc
+  # Bind the Elastic IP Address to an Elastic Network Interface.
+  AssociateManagementAccessPort:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt myEIP.AllocationId
+      NetworkInterfaceId: !Ref myNetworkInterface
+  # Create a security group for the elastic network interface that will be attached to our EC2 instance.
+  # OpenVPN, Pi-hole, and SSH port access
+  OpenVPNInstanceSG:
+    Type: AWS::EC2::SecurityGroup
+    DependsOn: myVPC
+    Properties:
+      GroupName: pihole-security-group
+      GroupDescription: SG for pihole Server
+      VpcId: !Ref myVPC
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all traffic to port 80
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all traffic to port 443
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all traffic to port 53/tcp
+          IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all traffic to port 53/udp
+          IpProtocol: udp
+          FromPort: 53
+          ToPort: 53	  
+        - CidrIp: !Ref ClientIPCIDR
+          Description: OpenVPN Port
+          IpProtocol: udp
+          FromPort: !Ref OpenVPNPort
+          ToPort: !Ref OpenVPNPort
+        - CidrIp: !Ref ClientIPCIDR
+          Description: SSH Port
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+      Tags:
+        -
+          Key: Name
+          Value: Pi-hole SG
+  # This is the IAM role which will be associated with the EC2 instance.
+  myEC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+  # This is the IAM policy which will be attached to the EC2 instance role.
+  myAccessPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: myAccessPolicy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action:
+              - s3:*
+            Effect: Allow
+            Resource: "*"
+      Roles:
+        - !Ref myEC2InstanceRole
+  # Binding profile for the myEC2InstanceRole to the actual EC2 instance.
+  ec2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+       - !Ref myEC2InstanceRole
+  # The Elastic Network Interface which will be attached to the EC2 instance.
+  # The security group, OpenVPNInstanceSG, is also associated with this interface.
+  myNetworkInterface:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref MyPublicSubnet
+      Description: Public Interface
+      GroupSet:
+      - !Ref OpenVPNInstanceSG
+      SourceDestCheck: false
+      Tags:
+        -
+          Key: Name
+          Value: Pi-hole ENI
+  # Bind the domain name to the elastic IP.
+  myDNSRecord:
+    Type: AWS::Route53::RecordSet
+    DependsOn: myEIP
+    Properties:
+      HostedZoneId: !Ref Route53zoneId
+      Comment: DNS name for my instance.
+      Name: !Ref DomainName
+      Type: A
+      TTL: '900'
+      ResourceRecords:
+      - !Ref myEIP
+  # This is the S3 bucket where our client profile and secrets will be stored.
+  myS3Bucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      AccessControl: Private
+  # If you specify an EBS snapshot then create a volume from it, else create a new one.
+  # If you delete the stack then it will create a snapshot which can be reused on redeployment.
+  # This allows you to persist prexisting configurations and keys.  
+  myEBSVolume:
+    Type: AWS::EC2::Volume
+    DeletionPolicy: Snapshot
+    Properties:
+      AvailabilityZone: !Ref SubnetAZ
+      Encrypted: true
+      VolumeType: gp2
+      Size: 10
+      SnapshotId: !If [ExistingEBS, !Ref ReuseEBS, !Ref "AWS::NoValue"]
+      Tags:
+        -
+          Key: Name
+          Value: Docker_EBS
+  # The EC2 instance
+  piholeEC2Instance:
+    Type: "AWS::EC2::Instance"
+    DependsOn: [myEIP, OpenVPNInstanceSG, myEBSVolume]
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref EC2InstanceType
+      Volumes: 
+        -
+          VolumeId: !Ref myEBSVolume
+          Device: /dev/sdh 
+  #Install docker, update software, start docker, run the cfn-init config set, and then send a signal when finished.
+      UserData:
+        "Fn::Base64":
+          !Sub |
+            #!/bin/bash
+            amazon-linux-extras install docker -y
+            yum update -y
+            service docker start
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource piholeEC2Instance --configsets myCfnConfigSet --region ${AWS::Region}
+            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource piholeEC2Instance --region ${AWS::Region}
+      SourceDestCheck: false
+      KeyName: !Ref SSHKeyName
+      NetworkInterfaces:
+        -
+          NetworkInterfaceId: !Ref myNetworkInterface
+          DeviceIndex: 0
+      IamInstanceProfile: !Ref ec2InstanceProfile
+      Tags:
+        -
+          Key: Name
+          Value: pihole-EC2 
+    # The CloudFormation stack will wait to mark the EC2OpenVPNInstance as CREATE_COMPLETE until we recieve a signal from the instance, or 10 minutes elapses.
+    CreationPolicy:
+      ResourceSignal:
+        Count: "1"
+        Timeout: PT10M
+    Metadata:
+      AWS::CloudFormation::Init:
+        # cfn-init config set rules to build the environment. 
+        # format_volume, generate_CA_key, and generate_client_key are only run if it's a new volume.
+        configSets:
+          myCfnConfigSet:
+            - "mount_volume"
+            - "generate_CA_key"
+            - "start_containers"
+            - "generate_client_key"
+            - "upload_files"
+        # Mount EBS Volume and format it if it's a new volume.
+        mount_volume:
+          commands:
+            01_format_mount:
+              command: !If [NewEBS, "mkfs -t ext4 /dev/sdh", "echo format skipped because EBS was created from a snapshot"]
+            02_make_mount_folder:
+              command: "mkdir /mnt/dockershare"
+            03_mount_volume:
+              command: "mount /dev/sdh /mnt/dockershare"
+        # Generate CA key
+        # The pschiffe/openvpn container is a patched version of kylemanna/openvpn that allows easyrsa to automate the key creation.
+        # This only runs if you're not reusing prior keys.
+        generate_CA_key:
+          commands:
+            01_build_config:
+              command: !If [NewEBS, !Sub "docker run -v /mnt/dockershare/ovpn-data:/etc/openvpn --rm pschiffe/openvpn ovpn_genconfig -N -d -n 172.17.0.2 -u udp://pihole.clouderic.net -p \"route ${HomeNW} ${HomeSN}\" -p \"route 172.17.0.0 255.255.0.0\"", "echo configuration already exists"]
+            02_create_CA_KEY:
+              command: !If [NewEBS, !Sub "docker run -e CA_KEY=${VPNCAKey} -e CA_CN=${VPNCACN} -v /mnt/dockershare/ovpn-data:/etc/openvpn --log-driver=none --rm pschiffe/openvpn ovpn_initpki", "echo CA Key already exists"]
+        # Start Docker containers
+        start_containers:
+          commands:
+            01_run_pihole:
+              command: !Sub "docker run -d --name pihole -p 53:53/tcp -p 53:53/udp -p 80:80 -e DNS1=1.1.1.1 -e DNS2=1.0.0.1 -e TZ=EST -e ServerIP=${myEIP} -e VIRTUAL_HOST=${myDNSRecord} -e WEBPASSWORD=${PiHolePassword} -e DNSMASQ_LISTENING=local --restart=unless-stopped --cap-add=NET_ADMIN --dns=127.0.0.1 -v /mnt/dockershare/pihole:/etc/pihole -v /mnt/dockershare/dnsmasq.d:/etc/dnsmasq.d pihole/pihole"
+            02_run_openvpn:
+              command: !Sub "docker run -v /mnt/dockershare/ovpn-data:/etc/openvpn -d -p ${OpenVPNPort}:1194/udp --cap-add=NET_ADMIN --name openvpn --restart=unless-stopped pschiffe/openvpn"
+            03_run_watchtower:
+              command: "docker run -d --name watchtower -v /var/run/docker.sock:/var/run/docker.sock --restart=unless-stopped v2tec/watchtower --cleanup -s \"0 0 * * 1\""
+        # Generate client keys
+        # This only runs if you're not reusing prior keys.
+        generate_client_key:
+          commands:
+            01_create_client_key:
+              command: !If [NewEBS, !Sub "docker run -e CA_KEY=${VPNCAKey} -v /mnt/dockershare/ovpn-data:/etc/openvpn --log-driver=none --rm pschiffe/openvpn easyrsa build-client-full ${VPNClientKey} nopass", "echo client key already exists"]
+            02_copy_client_key:
+              command: !If [NewEBS, !Sub "docker run -v /mnt/dockershare/ovpn-data:/etc/openvpn --log-driver=none --rm pschiffe/openvpn ovpn_getclient ${VPNClientKey} > /mnt/dockershare/ovpn-data/${VPNClientKey}.ovpn", "echo config already exists"]
+        # Upload the client key and logs to S3.
+        upload_files:
+          commands:
+            01_upload_client_key:
+              cwd: "/mnt/dockershare/ovpn-data"
+              command: !Sub "aws s3 cp *.ovpn s3://${myS3Bucket}/client/"
+            02_upload_cloud_init_log:
+              cwd: "/var/log"
+              test: "test -e /var/log/cloud-init-output.log"
+              command: !Sub "aws s3 cp /var/log/cloud-init-output.log s3://${myS3Bucket}/log/cloud-init-output.log"
+            03_upload_cfn_init_log:
+              cwd: "/var/log"
+              test: "test -e /var/log/cfn-init.log"
+              command: !Sub "aws s3 cp /var/log/cfn-init.log s3://${myS3Bucket}/log/cfn-init.log"
+  # Empty S3 bucket lambda function and associated Execution Role and Policy.
+  # The role which the Lambda function will assume when it executes.
+  EmptyS3BucketExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+  # The policy which will be attached to the Lambda execution role.
+  # The Lambda function will need access to write output to CloudWatch Logs and full access to S3.
+  EmptyS3BucketExecutionPolicy:
+    DependsOn:
+    - EmptyS3BucketExecutionRole
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: EmptyS3BucketLogsRolePolicy
+      Roles:
+      - Ref: EmptyS3BucketExecutionRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - logs:*
+          Resource:
+          - arn:aws:logs:*:*:*
+        - Effect: Allow
+          Action:
+          - s3:*
+          Resource:
+          - "*"
+  # This lambda function will empty and delete the S3 bucket which was created with in the stack.
+  # The function will be invoked on stack creation, update, and deletion events fired from CloudFormation.
+  EmptyS3BucketLambda:
+    Type: AWS::Lambda::Function
+    DependsOn:
+    - EmptyS3BucketExecutionRole
+    - EmptyS3BucketExecutionPolicy
+    Properties:
+      Timeout: 60
+      Handler: index.handler
+      Runtime: "nodejs6.10"
+      MemorySize: 128
+      Code:
+        ZipFile: !Sub |
+          'use strict';
+
+          exports.handler = (event, context) => {
+              console.log(JSON.stringify(event));
+
+              var responseObject = {};
+              responseObject.event = event;
+              responseObject.context = context;
+
+              if (event.RequestType == "Delete") {
+                  console.log("Handle Delete Event");
+                  var AWS = require('aws-sdk');
+                  var s3Client = new AWS.S3();
+                  clearBucket(s3Client, event.ResourceProperties.S3BucketName, responseObject);
+              } else {
+                  console.log("Handle Create Event");
+                  sendResponse(responseObject);
+              }
+          };
+
+          function sendResponse(responseObject) {
+              var cfnResponse = require('cfn-response');
+              cfnResponse.send(responseObject.event, responseObject.context, cfnResponse.SUCCESS);
+          }
+
+          function deleteBucket(s3Client, bucket, responseObject) {
+              s3Client.deleteBucket({
+                  Bucket: bucket
+              }, function(err, data) {
+                  if (err) {
+                      console.log(err, err.stack);
+                  } else {
+                      console.log(data);
+                  }
+                  sendResponse(responseObject);
+              });
+          }
+
+          function clearBucket(s3Client, bucket, responseObject) {
+              s3Client.listObjects({
+                  Bucket: bucket
+              }, function(err, data) {
+                  if (err) {
+                      console.log("error listing bucket objects " + err);
+                      return;
+                  }
+                  var items = data.Contents;
+                  for (var i = 0; i < items.length; i += 1) {
+                      var deleteParams = {
+                          Bucket: bucket,
+                          Key: items[i].Key
+                      };
+                      deleteObject(s3Client, deleteParams);
+                  }
+              });
+              setTimeout(function() {
+                  deleteBucket(s3Client, bucket, responseObject);
+              }, 10000);
+          }
+
+          function deleteObject(s3Client, deleteParams) {
+              s3Client.deleteObject(deleteParams, function(err, data) {
+                  if (err) {
+                      console.log("Error Deleting Object: " + deleteParams.Key);
+                  } else {
+                    console.log("Deleted Object: " + deleteParams.Key);
+                  }
+              });
+          }
+      Role: !GetAtt EmptyS3BucketExecutionRole.Arn
+  # Custom resource for the EmptyS3BucketLambda lambda function.
+  # CloudFormation will wait for the associated lambda function to signal back with cfn-response.
+  EmptyS3BucketAction:
+    Type: Custom::EmptyS3BucketAction
+    Properties:
+      ServiceToken: !GetAtt EmptyS3BucketLambda.Arn
+      Region: !Ref "AWS::Region"
+      S3BucketName: !Ref myS3Bucket
+
+Outputs:
+  myS3BucketOut:
+    Description: S3 bucket name
+    Value: !Ref myS3Bucket
+  myEIPOut:
+    Description: Instance EIP
+    Value: !Ref myEIP
+  EC2OpenVPNInstanceOut:
+    Description: EC2 Instance
+    Value: !Ref piholeEC2Instance
