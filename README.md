@@ -1,7 +1,9 @@
 # A CloudFormation Template for Deploying an Ad-Blocking DNS Server
 
+<a href="https://aws.amazon.com/cloudformation/"><img src="./images/CloudFormation_old.png" width="240"></a>
+
 ## Table of contents
-<a href="https://aws.amazon.com/cloudformation/"><img src="./images/CloudFormation_old.png" width="240" align="right"></a>
+
 1. [Project Outline](#Outline)
     - [Project Progress](#Progress)
     - [Key Technologies](#Technologies)
@@ -23,12 +25,19 @@
 
 This project is for a CloudFormation template that uses docker to create a Pi-hole ad-blocking DNS relay. It's secured by a split tunnel VPN to prevent it from becoming an open resolver. The benefit is a standardized ad-blocking environment that can be applied to an entire home network as well as on your cell phone for secure ad-blocking while on the go. The goal is to set up a VPN connection that only routes DNS traffic to maintain performance with a low cost EC2 instance.
 
-Based on the DevOps theory of infrastructure as code, I'm using an AWS CloudFormation template make an automated and portable process that anybody can run. I made this template to apply the knowledge I gained while becoming an AWS Certified Cloud Architect Associate. Currently, the project is a work in progress and the entire deployment is not automated.
+Based on the DevOps theory of infrastructure as code, I'm using an AWS CloudFormation template make an automated and portable process that anybody can run. I made this template to apply the knowledge I gained while becoming an AWS Certified Cloud Architect Associate. The stack is fully automated and persistent which means that everything is created at run time and all configurations are saved so it can be reused for redeployment.
 
 <a name="Progress"></a>
 #### Project Progress
-- All of the infrastructure is automated except for the EBS volume used for a persistent blind mount.
-- All of the software is automated except for VPN key generation.
+- 2.0 update: 
+     - The entire stack is fully automated *and* persistent! This was made possible by using conditional statements.
+     - Created a CloudFormation Interface for organized configuration.
+     - Additional security by obscuring passwords and encrypting the EBS mount.
+     - Added cfn-init for software configuration and deployment.
+     - S3 bucket for easy access to the client certificate.
+     - Lambda function to delete the S3 bucket.
+     - Added paramaters home or mobile deployment.
+     - Fixed an issue with a hard coded paramater.
 
 <a name="Technologies"></a>
 #### Key Technologies
@@ -43,6 +52,7 @@ This project is a CloudFormation template coded in YAML. I’m leveraging the fo
 
 <a href="https://aws.amazon.com/iam/"><img src="./images/IAM.gif" width="120"></a> <a href="https://aws.amazon.com/ebs/"><img src="./images/EBS.gif" width="120"></a>
 
+<a href="https://aws.amazon.com/s3/"><img src="./images/s3.png" width="120"></a> <a href="https://aws.amazon.com/lambda/"><img src="./images/lambda.png" width="120"></a>
 
 <a href="https://www.docker.com/"><img src="./images/docker.png" width="120" align="right"></a>
 <br><br>
@@ -58,78 +68,55 @@ OpenVPN is the standard in open source VPN tunnels. This project configures it a
 
 <a href="https://github.com/v2tec/watchtower"><img src="./images/container.png" width="120" align="left"></a>
 <br><br>
-Watchtower monitors docker images and restarts the containers so that the stack remains updated.
+Watchtower monitors the docker repository for changes and restarts the containers so that the stack remains updated.
 <br><br><br>
 <a name="Resolver"></a>
 #### A Note About Open Resolvers
 
-A DNS server that responds to all clients is called an [Open Resolver](http://openresolverproject.org/). This presents a significant security risk to you and others on the internet. OpenVPN helps to prevent this risk by providing a private tunnel to the DNS server. Additionally, Pi-hole's default configuration for interface listening should not be modified.
+A DNS server that responds to all clients is called an [Open Resolver](http://openresolverproject.org/). This presents a significant security risk to you and others on the internet. This project is designed to be secure by using a VPN tunnel to the DNS server. Additionally, Pi-hole in this stack is configured for interface listening one hop away so it won't respond to outside requests.
 
 ---
 <a name="Installation"></a>
 ## Installation
 
-This section describes how to deploy the stack. You will first need to prepare your environment before creaating the stack. Afterwards, you will need to configure VPN tunnel with the appropriate application. Finally, a client will need to be configured to initiate the tunnel.
+This section describes how to deploy the stack. Resource creation, key creation, and system configuration is automated to minimize preparation.
 
 <a name="Begin"></a>
 #### Before You Begin
 
 Using this template requires the following:
 - An AWS account.
-- A Key Pair to associate with the EC2 instance.
-- Knowlege of how to SSH into an EC2 instance with a key.
+- A Key Pair to associate with the EC2 instance for ssh connections.
 - A domain registered on Route 53.
-- A formatted EBS volume for the docker blind mount.
 
 <a name="Run"></a>
 #### Running the Template
 
 Follow these steps to sucessfully run the CloudFormation template. Steps 1-3 only need to be performed once to build out the environment.
 
- 1. *Prepare your environment.*
-     - Create an EBS volume.
-          - This is for the docker blind mount and requires less than 1 Megabyte. For simplicity's sake, I would recomend 10 Gigabytes.
-     - Start an EC2 Instance.
-          - If you don't already have a key pair, you have the option of creating one on the last step before launching the instance.
-     - Attach the EBS volume.
-     - Mount and format the EBS volume. Make an ssh connection to your EC2 instance and run the following commands:
-	  
-           mkdir /mnt/dockershare
-	
-           mount /dev/sdh /mnt/dockershare
-	
-           sudo mkfs -t ext4 device_name
+ 1. *Select Template*
+     - Choose "Upload the template to Amazon S3" and then specify the file location.
+ 2. *Enter the desired parameters (See the [Parameters](#Parameters) section below).*
+     -  At minimum, you will need to specify the following:
+	      - Stack name
+	      - KeyPair
+	      - Route 53 Zone ID
+	      - Domain Name
+	      - Availability Zone
+ 3. *Select Options*
+     - You can leave the defaults but for troubleshooting issues go to advanced and disable "Rollback on failure".
+ 4. *Review*
+     - Scroll to the the bottom and check the box, "I acknowledge that AWS CloudFormation might create IAM resources".
+ 5. *Create*.
+     - Click "Create" and wait for the stack to build. It will take 5-10 minutes to complete. When it's finished, the status will say "CREATE_COMPLETE".
 
- 2. *Load the CloudFormation template.*
-     - Enter the desired parameters (See the [Parameters](#Parameters) section below).
- 3. *OpenVPN will not start correctly the first time but this gives you the opportunity to ssh into the EC2 instance and build the VPN configuration and keys.*
-     - The first command generates the configuration files. You will need to specify the domain name that you have registerd on Route 53 The first route will be your local network, usually 10.0.0.0 or 192.168.0.0. 
-        
-	       docker run -v /mnt/dockershare/ovpn-data:/etc/openvpn --rm kylemanna/openvpn ovpn_genconfig -N -d -n 172.17.0.2 -u udp://pihole.yourdomain.com -p "route 10.0.0.0 255.255.255.0" -p "route 172.17.0.0 255.255.0.0"
-	
-     - The second command generates the pki keys.
-
-           docker run -v /mnt/dockershare/ovpn-data:/etc/openvpn --log-driver=none --rm -it kylemanna/openvpn ovpn_initpki
-
-     - Next, restart the OpenVPN container.
-     
-           sudo docker openvpn restart
-			   
-     - Finally, create a client key and export it to an opvn file. You can name they key whatever you want.
-     
-           docker run -v /mnt/dockershare/ovpn-data:/etc/openvpn --log-driver=none --rm -it kylemanna/openvpn easyrsa build-client-full MYKEY nopass
-	   
-           docker run -v /mnt/dockershare/ovpn-data:/etc/openvpn --log-driver=none --rm kylemanna/openvpn ovpn_getclient MYKEY > MYKEY.ovpn
-	   
- 4. *Redeploy the template and everything should come up correctly.*
-     - This can be verified by making an SSH connection back into the EC2 instance and running "sudo docker ps".
- 5. *Access the Pi-hole*.
-     - You will be able to access your Pi-hole by redirecting your browser to the domain name specified in the CloudFormation parameters. The password for logging in is also specified in the parameters.
 
 <a name="Client"></a>
 #### Client Configuration
 
-- Copy the ovpn file created in step 3 to your client computer (or phone) and import it into your VPN application.
+As part of the stack creation, an S3 bucket is created that contains the client key. You can find a link to it in the Resources tab in CloudFormation.
+
+- Copy the ovpn file your client computer (or phone) and import it into your VPN application.
 - I'm using OpenVPN on my desktop.
 - Some routers support VPN connections and you can import the key to provide ad-blocking for your entire network.
 - There are several OpenVPN applications for phones. On Android, you want the one exactly named "OpenVPN for Android". This one allows you to exclude the Google Play Store so that application updates will continue to work.
@@ -148,61 +135,53 @@ This section describes the behavior of the Cloudformation template as well as th
 3. A security group is created with ACLs for the appropriate ports and attached to the Elastic IP.
 4. Next, an IAM role is created to grant access to the EC2 instance.
 5. Route53 is configured to provide an A record to the Elastic IP.
-6. Finally, the EC2 instance is created.
-     - The EBS Volume is attached for the Docker blind mount.
+6. An S3 bucket is created that will store the client key and logs.
+7. The EBS volume that will be used for the bind mount is created. If you specified an EBS snapshot then it will be built from it so that your settings persist from a previous stack.
+8. Finally, the EC2 instance is created.
+     - The EBS Volume is attached for the Docker bind mount.
      - User Data is used to run a startup script to:
-          - Mount the EBS volume.
           - Install Docker.
           - Update the OS.
-          - Run the Pi-hole docker container.
-          - Run the OpenVPN docker container.
-          - Run the Watchtower docker container.
+		  - Run the cnf-init config set. The config set contains all of the software configuration.
+		       - Mount the EBS volume.
+		       - Generate the CA key if you don't specify an EBS snapsot.
+		       - Run the docker containters Pi-hole, OpenVPN, and Watchtower.
+		       - Generate a client key if you don't specify an EBS snapshot.
+		       - Copy logs and the client key to the S3 bucket.
 	  
 <a name="Parameters"></a>
 #### Parameters
 
-These are parameters that will need to be populated before executing the stack. After you load the template into CloudFormation, you will be presented with a page requesting the following.
+These are the parameters used by the stack. Some are optional depending on your configuration. After you load the template into CloudFormation, you will be presented with a page requesting the following.
 
-##### PiHolePassword
-- You will need to specify a password for logging into the Pi-hole dashboard.
+##### Software Configuration
+- Reuse EBS Snapshot: (Optional) You can leave this blank the first time you run the stack. If you wish to redeploy, put snapshot id here to load it. This will allow you to reuse your keys from previous deployments.
+- Pi-hole Password: password for logging into the Pi-hole dashboard.
 
-##### OpenVPNPort
-- Default: 1194
-- This is the VPN Port you will be using. 1194 is the default but it’s more secure to change this to something else.
+##### EC2 Configuration
+- EC2 Instance Type: (Default: t3.nano) The EC2 instance type that determines the CPU and memory configuration. The default t3.nano is the smallest and cheapest option and is more than capable for this application. If you are still within the first year of your AWS free tier then a t2.micro would be cheaper.
+- AMI Id: (Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2) This is the Amazon Machine Image, the base operating system and version that will be used to create your EC2 instance.  The default is configured to grab the latest version of Amazon Linux2. You could specify a different AMI but it may require different User Data values depending on the installed software.
+- KeyPair: (Required) This is your key pair that is used when making an SSH connection to an EC2 instance. You will need to have created this before hand.
 
-##### SSHKeyName
-- This is your key pair that is used when making an SSH connection to an EC2 instance. You will need to have created this before hand.
+##### Network Configuration
+- Route 53 Zone ID: (Required) The Route 53 ZoneId for the domain you will associate with the server.
+- Domain Name: (Required) The name of A record for you EC2 instance, for example, pihole.exammple.com
+- Client CIDR: (Default: 0.0.0.0/0) The CIDR IP granted access by the Security Group. You can limit this to a specific IP but most people are behind DHCP. You could also specify a range used by your ISP to limit access. The default accepts all IPs.
+- Availability Zone: (Required) The availability zone for the subnet where the EC2 instance will be created. It must match the location of your EBS volume.
 
-##### ClientIPCIDR
-- Default: 0.0.0.0/0
-- The CIDR IP granted access by the Security Group. You can limit this to a specific IP but most people are behind DHCP. You could also specify a range used by your ISP to limit access. The default accepts all IPs.
+##### VPN Configuration
+- Client Key: The file name for the client key.
+- Root Certificate Key: The password for the root certificate.
+- Certificate Authority Common Name: This is the name of the certificate, typically corresponding with the name of the service.
+- OpenVPN UDP Port: (Default 1194) This is the VPN Port you will be using. 1194 is the default but it’s more secure to change this to something else.
+- Home Network: (Optional) You can leave this field blank if you are using the cert for your phone. Otherwise, this will have to be populated with your home network range so that a route is provided to the gateway. *Example: 192.168.0.0 or 10.0.0.0*
+- Home Subnet: (Optional) You can leave this field blank if you are using the cert for your phone. Otherwise, this will have to be populated with your home subnet range so that a route is provided to the gateway. *Example: 255.255.255.0*
 
-##### AMIId
-- Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
-- This is the Amazon Machine Image, the base operating system and version that will be used to create your EC2 instance.  The default is configured to grab the latest version of Amazon Linux2. You could specify a different AMI but it may require different User Data values depending on the installed software.
-
-##### Route53zoneId
-- The Route 53 ZoneId for the domain you will associate with the server.
-
-##### DomainName
-- The name of A record for you EC2 instance.
-
-##### EC2InstanceType
-- Default: t3.nano
-- The EC2 instance type that determines the CPU and memory configuration. The default t3.nano is the smallest and cheapest option and is more than capable for this application. If you are still within the first year of your AWS free tier then a t2.micro would be cheaper.
-
-##### SubnetAZ
-- The availability zone for the subnet where the EC2 instance will be created. It must match the location of your EBS volume.
-
-##### EBSVolumeID
-- You need to create and format an EBS volume prior to running this template. This will be used as the docker Blind mount for storing persistent data such as configuration and keys. Before you successfully run the template for the first time you will need to attach the volume to an EC2 instance and format it with the following command:
-
-      sudo mkfs -t ext4 device_name
----
 <a name="Troubleshooting"></a>
 ## Troubleshooting
 
-- The most difficult part I encountered is correctly configuring the VPN routes so that the tunnel is correctly split and only forwards DNS traffic.
+- If the stack fails to build, it automatically rolls back so that you can't view the logs. To prevent this, you can disable "Rollback on failure" in the Advanced section of the Options page. This will allow you to ssh into the EC2 instance and view the logs. The two logs that I find most valuable are the cfn-init.log which shows the software being configured and cloud-init-output.log that shows the stack creation.	 
+- The most difficult part I encountered is correctly configuring the VPN routes so that the tunnel is correctly split and only forwards DNS traffic. For this reason, I created the Home Network and Home Subnet paramaters that could be modified. I haven't tested it yet but I believe if you configure the tunnel on your router then you'll need to change these to reflect your WAN IP. I also determined that these values aren't required for phones.
 - If you receive a TLS error then it's probably an issue with the route on your local network. If the DNS isn't resolving then it's probably and issue with the route to your DNS server. You can view your route configuration in the following location:
 
       /mnt/dockershare/ovpn-data/openvpn.conf
@@ -210,37 +189,36 @@ These are parameters that will need to be populated before executing the stack. 
 <a name="Limitations"></a>
 ## Limitations
 
-- This project currently is not fully automated. My plan is to update the CloudFormation template with conditional statements to fully automate the preparation steps while persisting anything that was configured on a prior deployment.
-- You can only attach EBS volumes in the same Availability Zone so you will need to be aware of the location when you specify the SubnetAZ parameter.
-- One particular challenge is to create a portable encrypted EBS root volume. Under normal operation, an EC2 instance cannot be created from an unencrypted AMI. To make the process portable, the template will need to create an instance before making an encrypted snapshot and then redeploy with the snapshot.
+- This project relies on a domain registered on Route 53 which is an additional expense. I intend to make this optional in future updates. 
+
 ---
 <a name="Roadmap"></a>
 ## Roadmap
 
-*Encryption*
-- Encrypt EBS Storage and determine if the CloudFormation template needs to be updated to reflect this.
+*Encryption and security*
+- Add [unbound](https://nlnetlabs.nl/projects/unbound/about/) for additional security and privacy.
 - SSL with AWS Certificate manager in the CloudFormation template.
 
 <a href="https://aws.amazon.com/certificate-manager/"><img src="./images/Certificate.gif" width="120"></a>
 
-*Monitoring and Updating*
+*Monitoring and Notifications*
+- SNS alerts
+
+<a href="https://aws.amazon.com/sns/"><img src="./images/sns.png" width="120"></a>
+
 - CloudWatch monitoring configured in the CloudFormation template.
 
 <a href="https://aws.amazon.com/cloudwatch/"><img src="./images/CloudWatch.gif" width="120"></a>
 
-*Docker Optimization*
-- Switch from blind mounts to docker volumes. Determine if it’s possible to use the cloudstor add in to store volumes in ECS. The Docker documentation states that using volumes is preferred over blind mounts but using ECS for small projects appears to be less cost effective so I want to determine if this is feasible.
+*Automated Deployments*
+- Build a CI pipeline. Technically, this is outside of the project but it's something I want to set up for my development. I'll see if I can find a way to document and publish this.
 
-*Certificate Storage*
-- Create an S3 bucket which contains the client certificate for easy access.
-
-<a href="https://aws.amazon.com/s3/"><img src="./images/S3.gif" width="120"></a>
 ---
 <a name="Reference"></a>
 ## Reference
 
 I'm using the following Docker containers in this project:
-- [kylemanna/docker-openvpn](https://github.com/kylemanna/docker-openvpn)
+- [pschiffe/docker-openvpn] (https://github.com/pschiffe/docker-openvpn) which is based on [kylemanna/docker-openvpn](https://github.com/kylemanna/docker-openvpn)
 - [pihole/pihole](https://github.com/pi-hole/docker-pi-hole)
 - [v2tec/watchtower](https://github.com/v2tec/watchtower)
 
