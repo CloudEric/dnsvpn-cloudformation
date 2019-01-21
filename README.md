@@ -52,7 +52,7 @@ This project is a CloudFormation template coded in YAML. I’m leveraging the fo
 
 <a href="https://aws.amazon.com/iam/"><img src="./images/IAM.gif" width="120"></a> <a href="https://aws.amazon.com/ebs/"><img src="./images/EBS.gif" width="120"></a>
 
-<a href="https://aws.amazon.com/s3/"><img src="./images/s3.png" width="120"></a> <a href="https://aws.amazon.com/lambda/"><img src="./images/lambda.png" width="120"></a>
+<a href="https://aws.amazon.com/s3/"><img src="./images/S3.gif" width="120"></a> <a href="https://aws.amazon.com/lambda/"><img src="./images/lambda.png" width="120"></a>
 
 <a href="https://www.docker.com/"><img src="./images/docker.png" width="120" align="right"></a>
 <br><br>
