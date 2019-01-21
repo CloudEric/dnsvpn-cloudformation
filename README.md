@@ -23,15 +23,17 @@
 <a name="Outline"></a>
 ## Project Outline
 
-This project is for a CloudFormation template that uses docker to create a Pi-hole ad-blocking DNS relay. It's secured by a split tunnel VPN to prevent it from becoming an open resolver. The benefit is a standardized ad-blocking environment that can be applied to an entire home network as well as on your cell phone for secure ad-blocking while on the go. The goal is to set up a VPN connection that only routes DNS traffic to maintain performance with a low cost EC2 instance.
+This project is for a CloudFormation template that automates the creation of a DNS server. It uses docker to deploy a Pi-hole ad-blocking DNS relay secured by a split tunnel VPN to prevent it from becoming an open resolver. The benefit is a standardized ad-blocking environment that can be applied to an entire home network as well as on your cell phone for secure ad-blocking while on the go.
 
-Based on the DevOps theory of infrastructure as code, I'm using an AWS CloudFormation template make an automated and portable process that anybody can run. I made this template to apply the knowledge I gained while becoming an AWS Certified Cloud Architect Associate. The stack is fully automated and persistent which means that everything is created at run time and all configurations are saved so it can be reused for redeployment.
+The primary goal is ad-blocking but this system provides additional benefits as well. Many security exploits rely on advertizing platforms for attack vectors so it's best practice to block them by default. Additional saftey is provided by using a secure DNS server that is more difficult to hijack to reduce phishing. Privacy is another consideration that is improved because DNS traffic will no longer be logged by your ISP. Finally, you will reduce your bandwith usage by blocking marketing videos and images.
+
+Based on the DevOps theory of infrastructure as code, this AWS CloudFormation template is an automated and portable process that anybody can run. I made this template to apply the knowledge I gained while becoming an AWS Certified Cloud Architect Associate. The stack is fully automated and persistent which means that everything is created at run time and all configurations are saved so it can be reused for redeployment.
 
 <a name="Progress"></a>
 #### Project Progress
 - 2.0 update: 
-     - The entire stack is fully automated *and* persistent! This was made possible by using conditional statements.
-     - Created a CloudFormation Interface for organized configuration.
+     - The entire stack is fully automated *and* persistent!
+     - Designed a CloudFormation Interface for organized configuration.
      - Additional security by obscuring passwords and encrypting the EBS mount.
      - Added cfn-init for software configuration and deployment.
      - S3 bucket for easy access to the client certificate.
@@ -96,7 +98,7 @@ Follow these steps to sucessfully run the CloudFormation template. Steps 1-3 onl
 
  1. *Select Template*
      - Choose "Upload the template to Amazon S3" and then specify the file location.
- 2. *Enter the desired parameters (See the [Parameters](#Parameters) section below).*
+ 2. *Enter the desired parameters (See the [Parameters](#Parameters) section below)*
      -  At minimum, you will need to specify the following:
 	      - Stack name
 	      - KeyPair
@@ -107,7 +109,7 @@ Follow these steps to sucessfully run the CloudFormation template. Steps 1-3 onl
      - You can leave the defaults but for troubleshooting issues go to advanced and disable "Rollback on failure".
  4. *Review*
      - Scroll to the the bottom and check the box, "I acknowledge that AWS CloudFormation might create IAM resources".
- 5. *Create*.
+ 5. *Create*
      - Click "Create" and wait for the stack to build. It will take 5-10 minutes to complete. When it's finished, the status will say "CREATE_COMPLETE".
 
 
@@ -155,27 +157,27 @@ This section describes the behavior of the Cloudformation template as well as th
 These are the parameters used by the stack. Some are optional depending on your configuration. After you load the template into CloudFormation, you will be presented with a page requesting the following.
 
 ##### Software Configuration
-- Reuse EBS Snapshot: (Optional) You can leave this blank the first time you run the stack. If you wish to redeploy, put snapshot id here to load it. This will allow you to reuse your keys from previous deployments.
-- Pi-hole Password: password for logging into the Pi-hole dashboard.
+- *Reuse EBS Snapshot:* (Optional) You can leave this blank the first time you run the stack. If you wish to redeploy, put snapshot id here to load it. This will allow you to reuse your keys from previous deployments.
+- *Pi-hole Password:* password for logging into the Pi-hole dashboard.
 
 ##### EC2 Configuration
-- EC2 Instance Type: (Default: t3.nano) The EC2 instance type that determines the CPU and memory configuration. The default t3.nano is the smallest and cheapest option and is more than capable for this application. If you are still within the first year of your AWS free tier then a t2.micro would be cheaper.
-- AMI Id: (Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2) This is the Amazon Machine Image, the base operating system and version that will be used to create your EC2 instance.  The default is configured to grab the latest version of Amazon Linux2. You could specify a different AMI but it may require different User Data values depending on the installed software.
-- KeyPair: (Required) This is your key pair that is used when making an SSH connection to an EC2 instance. You will need to have created this before hand.
+- *EC2 Instance Type:* (Default: t3.nano) The EC2 instance type that determines the CPU and memory configuration. The default t3.nano is the smallest and cheapest option and is more than capable for this application. If you are still within the first year of your AWS free tier then a t2.micro would be cheaper.
+- *AMI Id:* (Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2) This is the Amazon Machine Image, the base operating system and version that will be used to create your EC2 instance.  The default is configured to grab the latest version of Amazon Linux2. You could specify a different AMI but it may require different User Data values depending on the installed software.
+- *KeyPair:* (Required) This is your key pair that is used when making an SSH connection to an EC2 instance. You will need to have created this before hand.
 
 ##### Network Configuration
-- Route 53 Zone ID: (Required) The Route 53 ZoneId for the domain you will associate with the server.
-- Domain Name: (Required) The name of A record for you EC2 instance, for example, pihole.exammple.com
-- Client CIDR: (Default: 0.0.0.0/0) The CIDR IP granted access by the Security Group. You can limit this to a specific IP but most people are behind DHCP. You could also specify a range used by your ISP to limit access. The default accepts all IPs.
-- Availability Zone: (Required) The availability zone for the subnet where the EC2 instance will be created. It must match the location of your EBS volume.
+- *Route 53 Zone ID:* (Required) The Route 53 ZoneId for the domain you will associate with the server.
+- *Domain Name:* (Required) The name of A record for you EC2 instance, for example, pihole.exammple.com
+- *Client CIDR:* (Default: 0.0.0.0/0) The CIDR IP granted access by the Security Group. You can limit this to a specific IP but most people are behind DHCP. You could also specify a range used by your ISP to limit access. The default accepts all IPs.
+- *Availability Zone:* (Required) The availability zone for the subnet where the EC2 instance will be created. It must match the location of your EBS volume.
 
 ##### VPN Configuration
-- Client Key: The file name for the client key.
-- Root Certificate Key: The password for the root certificate.
-- Certificate Authority Common Name: This is the name of the certificate, typically corresponding with the name of the service.
-- OpenVPN UDP Port: (Default 1194) This is the VPN Port you will be using. 1194 is the default but it’s more secure to change this to something else.
-- Home Network: (Optional) You can leave this field blank if you are using the cert for your phone. Otherwise, this will have to be populated with your home network range so that a route is provided to the gateway. *Example: 192.168.0.0 or 10.0.0.0*
-- Home Subnet: (Optional) You can leave this field blank if you are using the cert for your phone. Otherwise, this will have to be populated with your home subnet range so that a route is provided to the gateway. *Example: 255.255.255.0*
+- *Client Key:* The file name for the client key.
+- *Root Certificate Key:* The password for the root certificate.
+- *Certificate Authority Common Name:* This is the name of the certificate, typically corresponding with the name of the service.
+- *OpenVPN UDP Port:* (Default 1194) This is the VPN Port you will be using. 1194 is the default but it’s more secure to change this to something else.
+- *Home Network:* (Optional) You can leave this field blank if you are using the cert for your phone. Otherwise, this will have to be populated with your home network range so that a route is provided to the gateway. *Example: 192.168.0.0 or 10.0.0.0*
+- *Home Subnet:* (Optional) You can leave this field blank if you are using the cert for your phone. Otherwise, this will have to be populated with your home subnet range so that a route is provided to the gateway. *Example: 255.255.255.0*
 
 <a name="Troubleshooting"></a>
 ## Troubleshooting
@@ -202,7 +204,7 @@ These are the parameters used by the stack. Some are optional depending on your 
 <a href="https://aws.amazon.com/certificate-manager/"><img src="./images/Certificate.gif" width="120"></a>
 
 *Monitoring and Notifications*
-- SNS alerts
+- SNS alerts for reporting changes and issues.
 
 <a href="https://aws.amazon.com/sns/"><img src="./images/sns.png" width="120"></a>
 
@@ -218,7 +220,7 @@ These are the parameters used by the stack. Some are optional depending on your 
 ## Reference
 
 I'm using the following Docker containers in this project:
-- [pschiffe/docker-openvpn] (https://github.com/pschiffe/docker-openvpn) which is based on [kylemanna/docker-openvpn](https://github.com/kylemanna/docker-openvpn)
+- [pschiffe/docker-openvpn](https://github.com/pschiffe/docker-openvpn) which is based on [kylemanna/docker-openvpn](https://github.com/kylemanna/docker-openvpn)
 - [pihole/pihole](https://github.com/pi-hole/docker-pi-hole)
 - [v2tec/watchtower](https://github.com/v2tec/watchtower)
 
