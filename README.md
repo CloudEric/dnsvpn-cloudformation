@@ -25,21 +25,21 @@
 
 This project is for a CloudFormation template that automates the creation of a DNS server. It uses docker to deploy a Pi-hole ad-blocking DNS relay secured by a split tunnel VPN to prevent it from becoming an open resolver. The benefit is a standardized ad-blocking environment that can be applied to an entire home network as well as on your cell phone for secure ad-blocking while on the go.
 
-The primary goal is ad-blocking but this system provides additional benefits as well. Many security exploits rely on advertizing platforms for attack vectors so it's best practice to block them by default. Additional saftey is provided by using a secure DNS server that is more difficult to hijack to reduce phishing. Privacy is another consideration that is improved because DNS traffic will no longer be logged by your ISP. Finally, you will reduce your bandwith usage by blocking marketing videos and images.
+The primary goal is ad-blocking but this system provides additional benefits as well. Many security exploits rely on advertising platforms for attack vectors so it's best practice to block them by default. Additional saftey is provided by using a secure DNS server that is more difficult to hijack to reduce phishing. Privacy is another consideration that is improved because DNS traffic will no longer be logged by your ISP. Finally, you will reduce your bandwidth usage by blocking marketing videos and images.
 
 Based on the DevOps theory of infrastructure as code, this AWS CloudFormation template is an automated and portable process that anybody can run. I made this template to apply the knowledge I gained while becoming an AWS Certified Cloud Architect Associate. The stack is fully automated and persistent which means that everything is created at run time and all configurations are saved so it can be reused for redeployment.
 
 <a name="Progress"></a>
 #### Project Progress
-- 2.0 update: 
+- 2.0 update:
      - The entire stack is fully automated *and* persistent!
      - Designed a CloudFormation Interface for organized configuration.
      - Additional security by obscuring passwords and encrypting the EBS mount.
      - Added cfn-init for software configuration and deployment.
      - S3 bucket for easy access to the client certificate.
      - Lambda function to delete the S3 bucket.
-     - Added paramaters home or mobile deployment.
-     - Fixed an issue with a hard coded paramater.
+     - Added parameters home or mobile deployment.
+     - Fixed an issue with a hard coded parameter.
 
 <a name="Technologies"></a>
 #### Key Technologies
@@ -94,7 +94,7 @@ Using this template requires the following:
 <a name="Run"></a>
 #### Running the Template
 
-Follow these steps to sucessfully run the CloudFormation template. Steps 1-3 only need to be performed once to build out the environment.
+Follow these steps to successfully run the CloudFormation template. Steps 1-3 only need to be performed once to build out the environment.
 
  1. *Select Template*
      - Choose "Upload the template to Amazon S3" and then specify the file location.
@@ -108,7 +108,7 @@ Follow these steps to sucessfully run the CloudFormation template. Steps 1-3 onl
  3. *Select Options*
      - You can leave the defaults but for troubleshooting issues go to advanced and disable "Rollback on failure".
  4. *Review*
-     - Scroll to the the bottom and check the box, "I acknowledge that AWS CloudFormation might create IAM resources".
+     - Scroll to the bottom and check the box, "I acknowledge that AWS CloudFormation might create IAM resources".
  5. *Create*
      - Click "Create" and wait for the stack to build. It will take 5-10 minutes to complete. When it's finished, the status will say "CREATE_COMPLETE".
 
@@ -132,7 +132,7 @@ This section describes the behavior of the Cloudformation template as well as th
 <a name="Workflow"></a>
 #### Workflow
 
-1. The template creates a VPC with a subnet. 
+1. The template creates a VPC with a subnet.
 2. An Internet Gateway, route table, and Elastic IP are attached to give the network a static route to the internet.
 3. A security group is created with ACLs for the appropriate ports and attached to the Elastic IP.
 4. Next, an IAM role is created to grant access to the EC2 instance.
@@ -146,11 +146,11 @@ This section describes the behavior of the Cloudformation template as well as th
           - Update the OS.
 		  - Run the cnf-init config set. The config set contains all of the software configuration.
 		       - Mount the EBS volume.
-		       - Generate the CA key if you don't specify an EBS snapsot.
-		       - Run the docker containters Pi-hole, OpenVPN, and Watchtower.
+		       - Generate the CA key if you don't specify an EBS snapshot.
+		       - Run the docker containers Pi-hole, OpenVPN, and Watchtower.
 		       - Generate a client key if you don't specify an EBS snapshot.
 		       - Copy logs and the client key to the S3 bucket.
-	  
+
 <a name="Parameters"></a>
 #### Parameters
 
@@ -191,7 +191,7 @@ These are the parameters used by the stack. Some are optional depending on your 
 <a name="Limitations"></a>
 ## Limitations
 
-- This project relies on a domain registered on Route 53 which is an additional expense. I intend to make this optional in future updates. 
+- This project relies on a domain registered on Route 53 which is an additional expense. I intend to make this optional in future updates.
 
 ---
 <a name="Roadmap"></a>
