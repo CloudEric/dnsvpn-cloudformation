@@ -31,6 +31,10 @@ Based on the DevOps theory of infrastructure as code, this AWS CloudFormation te
 
 <a name="Progress"></a>
 #### Project Progress
+- 2.1 update:
+  - Improved IAM policies.
+  - Added an S3 bucket policy.
+  - Fixed another issue with a hard coded parameter.
 - 2.0 update:
      - The entire stack is fully automated *and* persistent!
      - Designed a CloudFormation Interface for organized configuration.
@@ -48,13 +52,11 @@ Based on the DevOps theory of infrastructure as code, this AWS CloudFormation te
 
 This project is a CloudFormation template coded in YAML. I’m leveraging the following AWS services:
 
-<a href="https://aws.amazon.com/cloudformation/"><img src="./images/CloudFormation.gif" width="120"></a> <a href="https://aws.amazon.com/route53/"><img src="./images/Route53.gif" width="120"></a>
+<a href="https://aws.amazon.com/cloudformation/"><img src="./images/CloudFormation.png" width="120"></a> <a href="https://aws.amazon.com/route53/"><img src="./images/Route53.png" width="120"></a>
+<a href="https://aws.amazon.com/vpc/"><img src="./images/VPC.png" width="120"></a> <a href="https://aws.amazon.com/ec2/"><img src="./images/EC2.png" width="120"></a>
 
-<a href="https://aws.amazon.com/vpc/"><img src="./images/VPC.gif" width="120"></a> <a href="https://aws.amazon.com/ec2/"><img src="./images/EC2.gif" width="120"></a>
-
-<a href="https://aws.amazon.com/iam/"><img src="./images/IAM.gif" width="120"></a> <a href="https://aws.amazon.com/ebs/"><img src="./images/EBS.gif" width="120"></a>
-
-<a href="https://aws.amazon.com/s3/"><img src="./images/S3.gif" width="120"></a> <a href="https://aws.amazon.com/lambda/"><img src="./images/lambda.png" width="120"></a>
+<a href="https://aws.amazon.com/iam/"><img src="./images/IAM.png" width="120"></a> <a href="https://aws.amazon.com/ebs/"><img src="./images/EBS.png" width="120"></a>
+<a href="https://aws.amazon.com/s3/"><img src="./images/S3.png" width="120"></a> <a href="https://aws.amazon.com/lambda/"><img src="./images/Lambda.png" width="120"></a>
 
 <a href="https://www.docker.com/"><img src="./images/docker.png" width="120" align="right"></a>
 <br><br>
@@ -182,8 +184,17 @@ These are the parameters used by the stack. Some are optional depending on your 
 <a name="Troubleshooting"></a>
 ## Troubleshooting
 
+- I have discovered a new issue with Android Pie, the latest version of the Android operating system. Google added a new feature in Chrome called "Async DNS resolver" that ignores your DNS settings and forwards queries to Google instead. The issue is documented [here](https://www.androidsage.com/2018/01/25/how-to-fix-adhell-2-not-working-chrome/). This issue can be solved with the following Steps:
+  - Launch Chrome
+  - Enter the URL "chrome://flags"
+  - search for "dns"
+  - Set "Async DNS resolver" to "Disabled"
+  - Click on "RELAUNCH NOW" to restart your browser
+
+
+- Some EC2 instance types aren't available in all Availability Zones. If the template fails because the instance type is unavailable you can either select a different zone or instance type like t2.micro.
 - If the stack fails to build, it automatically rolls back so that you can't view the logs. To prevent this, you can disable "Rollback on failure" in the Advanced section of the Options page. This will allow you to ssh into the EC2 instance and view the logs. The two logs that I find most valuable are the cfn-init.log which shows the software being configured and cloud-init-output.log that shows the stack creation.	 
-- The most difficult part I encountered is correctly configuring the VPN routes so that the tunnel is correctly split and only forwards DNS traffic. For this reason, I created the Home Network and Home Subnet paramaters that could be modified. I haven't tested it yet but I believe if you configure the tunnel on your router then you'll need to change these to reflect your WAN IP. I also determined that these values aren't required for phones.
+- The most difficult part I encountered is correctly configuring the VPN routes so that the tunnel is correctly split and only forwards DNS traffic. For this reason, I created the Home Network and Home Subnet parameters that could be modified. I haven't tested it yet but I believe if you configure the tunnel on your router then you'll need to change these to reflect your WAN IP. I also determined that these values aren't required for phones.
 - If you receive a TLS error then it's probably an issue with the route on your local network. If the DNS isn't resolving then it's probably and issue with the route to your DNS server. You can view your route configuration in the following location:
 
       /mnt/dockershare/ovpn-data/openvpn.conf
@@ -199,21 +210,30 @@ These are the parameters used by the stack. Some are optional depending on your 
 
 *Encryption and security*
 - Add [unbound](https://nlnetlabs.nl/projects/unbound/about/) for additional security and privacy.
+
+<a href="https://nlnetlabs.nl/projects/unbound/about/"><img src="./images/unbound.png" width="120"></a>
+
 - SSL with AWS Certificate manager in the CloudFormation template.
 
-<a href="https://aws.amazon.com/certificate-manager/"><img src="./images/Certificate.gif" width="120"></a>
+<a href="https://aws.amazon.com/certificate-manager/"><img src="./images/CertificateManager.png" width="120"></a>
 
 *Monitoring and Notifications*
 - SNS alerts for reporting changes and issues.
 
-<a href="https://aws.amazon.com/sns/"><img src="./images/sns.png" width="120"></a>
+<a href="https://aws.amazon.com/sns/"><img src="./images/SNS.png" width="120"></a>
 
 - CloudWatch monitoring configured in the CloudFormation template.
 
-<a href="https://aws.amazon.com/cloudwatch/"><img src="./images/CloudWatch.gif" width="120"></a>
+<a href="https://aws.amazon.com/cloudwatch/"><img src="./images/CloudWatch.png" width="120"></a>
 
-*Automated Deployments*
-- Build a CI pipeline. Technically, this is outside of the project but it's something I want to set up for my development. I'll see if I can find a way to document and publish this.
+*Additional Templates*
+- My next project will be to create a CD pipeline CloudFormation template for AWS CodePipeline.
+
+<a href="https://aws.amazon.com/codepipeline/"><img src="./images/CodePipeline.png" width="120"></a>
+
+- I think I want to expand this project to include an ELB and autoscaling.
+
+<a href="https://aws.amazon.com/elasticloadbalancing/"><img src="./images/ELB.png" width="120"></a>
 
 ---
 <a name="Reference"></a>
