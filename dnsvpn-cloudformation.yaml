@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Pi-hole Stack v2.0
+Description: Pi-hole Stack v2.1
 
 Parameters:
   PiHolePassword:
@@ -26,7 +26,7 @@ Parameters:
   VPNCACN:
     Type: String
     Default: pihole
-    Description: This is the name of the certificate, typically corresponding with the name of the service.	
+    Description: This is the name of the certificate, typically corresponding with the name of the service.
   #	SSH Key for the EC2 Instance. This is only needed for troubleshooting.
   SSHKeyName:
     Type: AWS::EC2::KeyPair::KeyName
@@ -41,7 +41,7 @@ Parameters:
     Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
     Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
     Description: AMI that you want to deploy. Default is the latest version of Amazon Linux2.
-  # Route53 ZoneId	
+  # Route53 ZoneId
   Route53zoneId:
     Type: String
     Description: Route 53 ZoneId for the domain you will associate with the server.
@@ -51,88 +51,88 @@ Parameters:
   EC2InstanceType:
     Type: String
     Default: t3.nano
-    Description: The default is the cheapest option. If you are in the 12 month free teir then a t2.micro may be more cost effective. 
+    Description: The default is the cheapest option. If you are in the 12 month free teir then a t2.micro may be more cost effective.
   # Availability zone for the subnet where the EC2 instance will be created.
   SubnetAZ:
     Type: AWS::EC2::AvailabilityZone::Name
     Description: Availability Zone where everything will be located.
   #Reuse EBS volume or leave blank to create a new one
-  ReuseEBS: 
+  ReuseEBS:
     Description: Leave empty if you have never run this template before.
     Type: String
-  HomeNW: 
+  HomeNW:
     Description: Specify your home network if you wish to use the pihole at home. Typically 192.168.0.0 or 10.0.0.0
     Type: String
-  HomeSN: 
+  HomeSN:
     Description: Specify you home subnet if you wish to use the pihole at home. Typically 255.255.255.0
     Type: String
 
-# Organize how the paramaters appear in CloudFormation	
-Metadata: 
-  AWS::CloudFormation::Interface: 
-    ParameterGroups: 
-      - 
-        Label: 
+# Organize how the paramaters appear in CloudFormation
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      -
+        Label:
           default: "Software Configuration"
         Parameters:
           - ReuseEBS
           - PiHolePassword
-      - 
-        Label: 
+      -
+        Label:
           default: "EC2 Configuration"
-        Parameters: 
+        Parameters:
           - EC2InstanceType
           - AmiId
           - SSHKeyName
-      - 
-        Label: 
+      -
+        Label:
           default: "Network Configuration"
-        Parameters: 
+        Parameters:
           - Route53zoneId
           - DomainName
           - ClientIPCIDR
           - SubnetAZ
-      - 
-        Label: 
+      -
+        Label:
           default: "VPN Configuration"
-        Parameters: 
+        Parameters:
           - VPNClientKey
           - VPNCAKey
           - VPNCACN
           - OpenVPNPort
           - HomeNW
           - HomeSN
-    # Readable names for the paramaters.		  
-    ParameterLabels: 
-      ReuseEBS: 
+    # Readable names for the paramaters.
+    ParameterLabels:
+      ReuseEBS:
         default: "Reuse EBS Snapshot"
-      PiHolePassword: 
+      PiHolePassword:
         default: "Pi-hole Password"
-      EC2InstanceType: 
+      EC2InstanceType:
         default: "EC2 Instance Type"
-      AmiId: 
+      AmiId:
         default: "AMI Id"
-      SSHKeyName: 
+      SSHKeyName:
         default: "KeyPair"
-      Route53zoneId: 
+      Route53zoneId:
         default: "Route 53 Zone ID"
-      DomainName: 
+      DomainName:
         default: "Domain Name"
-      ClientIPCIDR: 
+      ClientIPCIDR:
         default: "Client CIDR"
-      SubnetAZ: 
+      SubnetAZ:
         default: "Availability Zone"
-      VPNClientKey: 
+      VPNClientKey:
         default: "Client Key"
-      VPNCAKey: 
+      VPNCAKey:
         default: "Root Certificate Key"
-      VPNCACN: 
+      VPNCACN:
         default: "Certificate Authority Common Name"
-      OpenVPNPort: 
+      OpenVPNPort:
         default: "OpenVPN UDP Port"
-      HomeNW: 
+      HomeNW:
         default: "Home Network"
-      HomeSN: 
+      HomeSN:
         default: "Home Subnet"
 
 # If you specify an EBS snapshot in the paramaters then assign the EBS snapshot ID that will be used for EBS creation.
@@ -237,7 +237,7 @@ Resources:
           Description: Allow all traffic to port 53/udp
           IpProtocol: udp
           FromPort: 53
-          ToPort: 53	  
+          ToPort: 53
         - CidrIp: !Ref ClientIPCIDR
           Description: OpenVPN Port
           IpProtocol: udp
@@ -269,15 +269,19 @@ Resources:
   # This is the IAM policy which will be attached to the EC2 instance role.
   myAccessPolicy:
     Type: AWS::IAM::Policy
+    DependsOn: myS3Bucket
     Properties:
       PolicyName: myAccessPolicy
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
-          - Action:
-              - s3:*
-            Effect: Allow
-            Resource: "*"
+          - Effect: Allow
+            Action: s3:PutObject
+            Resource:
+              !Join
+                - ''
+                - - !GetAtt myS3Bucket.Arn
+                  - '/*'
       Roles:
         - !Ref myEC2InstanceRole
   # Binding profile for the myEC2InstanceRole to the actual EC2 instance.
@@ -319,9 +323,75 @@ Resources:
     DeletionPolicy: Delete
     Properties:
       AccessControl: Private
+  # The bucked policy attached to the above S3 bucket which grants full permission to the person who runs the template along with the appropriate permissions for the EC2 instance and Lambda delete function.
+  myBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    DependsOn:
+      - myS3Bucket
+      - myEC2InstanceRole
+      - EmptyS3BucketExecutionRole
+    Properties:
+      Bucket: !Ref myS3Bucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Id: piholeBucketPolicy
+        Statement:
+          - Sid: AllowEC2Put
+            Effect: Allow
+            Action:
+              - s3:PutObject
+            Resource:
+              !Join
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref myS3Bucket
+                  - '/*'
+            Principal:
+              AWS:
+                !Join
+                  - ''
+                  - - 'arn:aws:iam::'
+                    - !Ref AWS::AccountId
+                    - ':role/'
+                    - !Ref myEC2InstanceRole
+          - Sid: AllowLambdaDelete
+            Effect: Allow
+            Action:
+              - s3:DeleteObject
+            Resource:
+              !Join
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref myS3Bucket
+                  - '/*'
+            Principal:
+              AWS:
+                !Join
+                  - ''
+                  - - 'arn:aws:iam::'
+                    - !Ref AWS::AccountId
+                    - ':role/'
+                    - !Ref EmptyS3BucketExecutionRole
+          - Sid: AllowLambdaList
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource:
+              !Join
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref myS3Bucket
+            Principal:
+              AWS:
+                !Join
+                  - ''
+                  - - 'arn:aws:iam::'
+                    - !Ref AWS::AccountId
+                    - ':role/'
+                    - !Ref EmptyS3BucketExecutionRole
   # If you specify an EBS snapshot then create a volume from it, else create a new one.
   # If you delete the stack then it will create a snapshot which can be reused on redeployment.
-  # This allows you to persist prexisting configurations and keys.  
+  # This allows you to persist prexisting configurations and keys.
   myEBSVolume:
     Type: AWS::EC2::Volume
     DeletionPolicy: Snapshot
@@ -338,14 +408,17 @@ Resources:
   # The EC2 instance
   piholeEC2Instance:
     Type: "AWS::EC2::Instance"
-    DependsOn: [myEIP, OpenVPNInstanceSG, myEBSVolume]
+    DependsOn:
+      - myEIP
+      - OpenVPNInstanceSG
+      - myBucketPolicy
     Properties:
       ImageId: !Ref AmiId
       InstanceType: !Ref EC2InstanceType
-      Volumes: 
+      Volumes:
         -
           VolumeId: !Ref myEBSVolume
-          Device: /dev/sdh 
+          Device: /dev/sdh
   #Install docker, update software, start docker, run the cfn-init config set, and then send a signal when finished.
       UserData:
         "Fn::Base64":
@@ -366,7 +439,7 @@ Resources:
       Tags:
         -
           Key: Name
-          Value: pihole-EC2 
+          Value: pihole-EC2
     # The CloudFormation stack will wait to mark the EC2OpenVPNInstance as CREATE_COMPLETE until we recieve a signal from the instance, or 10 minutes elapses.
     CreationPolicy:
       ResourceSignal:
@@ -374,7 +447,7 @@ Resources:
         Timeout: PT10M
     Metadata:
       AWS::CloudFormation::Init:
-        # cfn-init config set rules to build the environment. 
+        # cfn-init config set rules to build the environment.
         # format_volume, generate_CA_key, and generate_client_key are only run if it's a new volume.
         configSets:
           myCfnConfigSet:
@@ -398,7 +471,7 @@ Resources:
         generate_CA_key:
           commands:
             01_build_config:
-              command: !If [NewEBS, !Sub "docker run -v /mnt/dockershare/ovpn-data:/etc/openvpn --rm pschiffe/openvpn ovpn_genconfig -N -d -n 172.17.0.2 -u udp://pihole.clouderic.net -p \"route ${HomeNW} ${HomeSN}\" -p \"route 172.17.0.0 255.255.0.0\"", "echo configuration already exists"]
+              command: !If [NewEBS, !Sub "docker run -v /mnt/dockershare/ovpn-data:/etc/openvpn --rm pschiffe/openvpn ovpn_genconfig -N -d -n 172.17.0.2 -u udp://${myDNSRecord} -p \"route ${HomeNW} ${HomeSN}\" -p \"route 172.17.0.0 255.255.0.0\"", "echo configuration already exists"]
             02_create_CA_KEY:
               command: !If [NewEBS, !Sub "docker run -e CA_KEY=${VPNCAKey} -e CA_CN=${VPNCACN} -v /mnt/dockershare/ovpn-data:/etc/openvpn --log-driver=none --rm pschiffe/openvpn ovpn_initpki", "echo CA Key already exists"]
         # Start Docker containers
@@ -452,30 +525,48 @@ Resources:
   EmptyS3BucketExecutionPolicy:
     DependsOn:
     - EmptyS3BucketExecutionRole
+    - myS3Bucket
     Type: AWS::IAM::Policy
     Properties:
       PolicyName: EmptyS3BucketLogsRolePolicy
       Roles:
-      - Ref: EmptyS3BucketExecutionRole
+      - !Ref EmptyS3BucketExecutionRole
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
-        - Effect: Allow
-          Action:
-          - logs:*
-          Resource:
-          - arn:aws:logs:*:*:*
-        - Effect: Allow
-          Action:
-          - s3:*
-          Resource:
-          - "*"
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              - logs:DescribeLogStreams
+            Resource:
+                !Join
+                  - ':'
+                  - - arn:aws:logs
+                    - !Ref AWS::Region
+                    - !Ref AWS::AccountId
+                    - log-group
+                    - '*'
+          - Effect: Allow
+            Action:
+              - s3:DeleteObject
+            Resource:
+                !Join
+                  - ''
+                  - - !GetAtt myS3Bucket.Arn
+                    - '/*'
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource:
+                !GetAtt myS3Bucket.Arn
+
   # This lambda function will empty and delete the S3 bucket which was created with in the stack.
   # The function will be invoked on stack creation, update, and deletion events fired from CloudFormation.
   EmptyS3BucketLambda:
     Type: AWS::Lambda::Function
     DependsOn:
-    - EmptyS3BucketExecutionRole
     - EmptyS3BucketExecutionPolicy
     Properties:
       Timeout: 60
