@@ -12,38 +12,49 @@
     - [Before You Begin](#Begin)
     - [Running the Template](#Run)
     - [Client Configuration](#Client)
+    - [Additional Client Certificates](#Certs)
 3. [Template Details](#Details)
     - [Workflow](#Workflow)
     - [Parameters](#Parameters)
 4. [Troubleshooting](#Troubleshooting)
-5. [Limitations](#Limitations)
-6. [Roadmap](#Roadmap)
-7. [Reference](#Reference)
+5. [Verification](#Verification)
+6. [Limitations](#Limitations)
+7. [Roadmap](#Roadmap)
+8. [Reference](#Reference)
 ---
 <a name="Outline"></a>
 ## Project Outline
 
 This project is for a CloudFormation template that automates the creation of a DNS server. It uses docker to deploy a Pi-hole ad-blocking DNS relay secured by a split tunnel VPN to prevent it from becoming an open resolver. The benefit is a standardized ad-blocking environment that can be applied to an entire home network as well as on your cell phone for secure ad-blocking while on the go.
 
-The primary goal is ad-blocking but this system provides additional benefits as well. Many security exploits rely on advertising platforms for attack vectors so it's best practice to block them by default. Additional saftey is provided by using a secure DNS server that is more difficult to hijack to reduce phishing. Privacy is another consideration that is improved because DNS traffic will no longer be logged by your ISP. Finally, you will reduce your bandwidth usage by blocking marketing videos and images.
+The primary goal is ad-blocking but this system provides additional benefits as well. Many security exploits rely on advertising platforms for attack vectors so it's best practice to block them by default. Additional safety is provided by using a secure DNS server that is more difficult to hijack. Privacy is another consideration that is improved because DNS traffic will no longer be logged by your ISP. Finally, you will reduce your bandwidth usage by blocking marketing videos and images.
 
 Based on the DevOps theory of infrastructure as code, this AWS CloudFormation template is an automated and portable process that anybody can run. I made this template to apply the knowledge I gained while becoming an AWS Certified Cloud Architect Associate. The stack is fully automated and persistent which means that everything is created at run time and all configurations are saved so it can be reused for redeployment.
 
 <a name="Progress"></a>
 #### Project Progress
+- 2.5 update:
+  - Added an Unbound DNS resolver with DNSSEC validation and EDNS.
+  - Created quick-create link.
+  - Improved IP addressing for the VPC, subnet, and docker containers.
+  - Added a time zone parameter.
+  - Fixed S3 cp for multiple certificates.
+  - Added a sample adlists.list for ad-blocking.
+  - Improved dependencies.
+  - Fixed OpenVPN routes.
 - 2.1 update:
   - Improved IAM policies.
   - Added an S3 bucket policy.
   - Fixed another issue with a hard coded parameter.
 - 2.0 update:
-     - The entire stack is fully automated *and* persistent!
-     - Designed a CloudFormation Interface for organized configuration.
-     - Additional security by obscuring passwords and encrypting the EBS mount.
-     - Added cfn-init for software configuration and deployment.
-     - S3 bucket for easy access to the client certificate.
-     - Lambda function to delete the S3 bucket.
-     - Added parameters home or mobile deployment.
-     - Fixed an issue with a hard coded parameter.
+  - The entire stack is fully automated *and* persistent!
+  - Designed a CloudFormation Interface for organized configuration.
+  - Additional security by obscuring passwords and encrypting the EBS mount.
+  - Added cfn-init for software configuration and deployment.
+  - S3 bucket for easy access to the client certificate.
+  - Lambda function to delete the S3 bucket.
+  - Added parameters home or mobile deployment.
+  - Fixed an issue with a hard coded parameter.
 
 <a name="Technologies"></a>
 #### Key Technologies
@@ -58,10 +69,14 @@ This project is a CloudFormation template coded in YAML. I’m leveraging the fo
 <a href="https://aws.amazon.com/iam/"><img src="./images/IAM.png" width="120"></a> <a href="https://aws.amazon.com/ebs/"><img src="./images/EBS.png" width="120"></a>
 <a href="https://aws.amazon.com/s3/"><img src="./images/S3.png" width="120"></a> <a href="https://aws.amazon.com/lambda/"><img src="./images/lambda.png" width="120"></a>
 
-<a href="https://www.docker.com/"><img src="./images/docker.png" width="120" align="right"></a>
+<a href="https://www.docker.com/"><img src="./images/docker.png" width="120" align="left"></a>
 <br><br>
-Docker containers are used for ease of management.
-
+Docker containers are used for ease of management. This modular environment allows for complex systems to be rapidly deployed in a consistent manor.
+<br><br><br>
+<a href="https://nlnetlabs.nl/projects/unbound/about/"><img src="./images/unbound.png" width="120" align="right"></a>
+<br>
+Unbound is a DNS resolver that provides a high level of security and privacy. It provides recursive resolution by directly contacting the authoritative servers. The container in this stack provides [DNSSEC](https://en.wikipedia.org/wiki/Domain_Name_System_Security_Extensions) and [EDNS](https://en.wikipedia.org/wiki/Extension_mechanisms_for_DNS).
+<br><br>
 <a href="https://pi-hole.net/"><img src="./images/pi-hole.png" width="120" align="left"></a>
 <br><br>
 Pi-hole is an open source dns server that acts as a relay and blocks ads based on black and white lists. It was originally designed for the Raspberry Pi so it's extremely lightweight and fast.
@@ -73,11 +88,11 @@ OpenVPN is the standard in open source VPN tunnels. This project configures it a
 <a href="https://github.com/v2tec/watchtower"><img src="./images/container.png" width="120" align="left"></a>
 <br><br>
 Watchtower monitors the docker repository for changes and restarts the containers so that the stack remains updated.
-<br><br><br>
+<br><br><br><br>
 <a name="Resolver"></a>
 #### A Note About Open Resolvers
 
-A DNS server that responds to all clients is called an [Open Resolver](http://openresolverproject.org/). This presents a significant security risk to you and others on the internet. This project is designed to be secure by using a VPN tunnel to the DNS server. Additionally, Pi-hole in this stack is configured for interface listening one hop away so it won't respond to outside requests.
+A DNS server that responds to all clients is called an [Open Resolver](http://openresolverproject.org/). This presents a significant security risk to you and others on the internet. This project is designed to be secure by using a VPN tunnel to the DNS server. Additionally, this stack configures Pi-hole for interface listening one hop away so it won't respond to outside requests.
 
 ---
 <a name="Installation"></a>
@@ -96,7 +111,22 @@ Using this template requires the following:
 <a name="Run"></a>
 #### Running the Template
 
-Follow these steps to successfully run the CloudFormation template. Steps 1-3 only need to be performed once to build out the environment.
+There are two methods for running the template. The quick-create link automatically loads the template and puts all of the deployment options on one page. The second method provides additional configuration options for management and troubleshooting.
+
+- Quickstart URL:
+
+  1. Click on the quick-create link [here](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/create/review?stackName=pihole&templateURL=https://s3.amazonaws.com/clouderic.net/dnsvpn-cloudformation.yaml).
+  2. Enter the desired parameters (See the [Parameters](#Parameters) section below)
+      -  At minimum, you will need to specify the following:
+ 	      - KeyPair
+ 	      - Route 53 Zone ID
+ 	      - Domain Name
+ 	      - Availability Zone
+  3. Check the box next to "*I acknowledge that AWS CloudFormation might create IAM resources*".
+  4. Click "*Create*".
+
+
+- Deployment through the [CloudFormation site](https://console.aws.amazon.com/cloudformation/):
 
  1. *Select Template*
      - Choose "Upload the template to Amazon S3" and then specify the file location.
@@ -114,7 +144,6 @@ Follow these steps to successfully run the CloudFormation template. Steps 1-3 on
  5. *Create*
      - Click "Create" and wait for the stack to build. It will take 5-10 minutes to complete. When it's finished, the status will say "CREATE_COMPLETE".
 
-
 <a name="Client"></a>
 #### Client Configuration
 
@@ -125,6 +154,16 @@ As part of the stack creation, an S3 bucket is created that contains the client 
 - Some routers support VPN connections and you can import the key to provide ad-blocking for your entire network.
 - There are several OpenVPN applications for phones. On Android, you want the one exactly named "OpenVPN for Android". This one allows you to exclude the Google Play Store so that application updates will continue to work.
      - In OpenVPN for Android, click on the edit icon for the connection, navigate to "Allowed Apps", and check the box next to "Google Play Store".
+
+<a name="Certs"></a>
+#### Additional Client Certificates
+
+If you wish to connect multiple devices then you will want to create more certificates. This can be accomplished by making an ssh connection to your EC2 instance and running the following commands. The only variable that needs to be changed is the name of the certificate listed below as "cert_name".
+
+    sudo docker run -e CA_KEY=DNS_cert -v /mnt/dockershare/ovpn-data:/etc/openvpn --log-driver=none --rm pschiffe/openvpn easyrsa build-client-full cert_name nopass
+
+    sudo docker run -v /mnt/dockershare/ovpn-data:/etc/openvpn --log-driver=none --rm pschiffe/openvpn ovpn_getclient cert_name > /mnt/dockershare/ovpn-data/cert_name.ovpn
+
 ---
 <a name="Details"></a>
 ## Template Details
@@ -147,11 +186,12 @@ This section describes the behavior of the Cloudformation template as well as th
           - Install Docker.
           - Update the OS.
 		  - Run the cnf-init config set. The config set contains all of the software configuration.
-		       - Mount the EBS volume.
-		       - Generate the CA key if you don't specify an EBS snapshot.
-		       - Run the docker containers Pi-hole, OpenVPN, and Watchtower.
-		       - Generate a client key if you don't specify an EBS snapshot.
-		       - Copy logs and the client key to the S3 bucket.
+        - Mount the EBS volume.
+        - Generate OpenVPN configuration and the CA key if you don't specify an EBS snapshot.
+        - Download ad-block lists if you don't specify an EBS snapshot.
+		    - Run the docker containers Pi-hole, OpenVPN, and Watchtower.
+		    - Generate a client key if you don't specify an EBS snapshot.
+		    - Copy logs and the client key to the S3 bucket.
 
 <a name="Parameters"></a>
 #### Parameters
@@ -161,6 +201,7 @@ These are the parameters used by the stack. Some are optional depending on your 
 ##### Software Configuration
 - *Reuse EBS Snapshot:* (Optional) You can leave this blank the first time you run the stack. If you wish to redeploy, put snapshot id here to load it. This will allow you to reuse your keys from previous deployments.
 - *Pi-hole Password:* password for logging into the Pi-hole dashboard.
+- *Time Zone:* This is used for log timestamps and scheduled maintenance tasks in Unbound and Pi-hole as well as for scheduled. The format must match [tz database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones).
 
 ##### EC2 Configuration
 - *EC2 Instance Type:* (Default: t3.nano) The EC2 instance type that determines the CPU and memory configuration. The default t3.nano is the smallest and cheapest option and is more than capable for this application. If you are still within the first year of your AWS free tier then a t2.micro would be cheaper.
@@ -180,6 +221,12 @@ These are the parameters used by the stack. Some are optional depending on your 
 - *OpenVPN UDP Port:* (Default 1194) This is the VPN Port you will be using. 1194 is the default but it’s more secure to change this to something else.
 - *Home Network:* (Optional) You can leave this field blank if you are using the cert for your phone. Otherwise, this will have to be populated with your home network range so that a route is provided to the gateway. *Example: 192.168.0.0 or 10.0.0.0*
 - *Home Subnet:* (Optional) You can leave this field blank if you are using the cert for your phone. Otherwise, this will have to be populated with your home subnet range so that a route is provided to the gateway. *Example: 255.255.255.0*
+
+<a name="Verification"></a>
+## Verification
+After setup is complete and you have successfully tunneled into the stack, you can verify that your DNS is secure.
+- Visit [DNS Leak Test](https://www.dnsleaktest.com/) and run the standard test. The resulting DNS connection should point to your Elastic IP.
+- Visit the [DNSSEC Resolver Test](http://dnssec.vs.uni-due.de/) and run the test. This should verify that your queries are secure.
 
 <a name="Troubleshooting"></a>
 ## Troubleshooting
@@ -202,17 +249,14 @@ These are the parameters used by the stack. Some are optional depending on your 
 <a name="Limitations"></a>
 ## Limitations
 
-- This project relies on a domain registered on Route 53 which is an additional expense. I intend to make this optional in future updates.
+- This project relies on a domain registered on Route 53 which is an additional expense. I'd like to make this optional in a future update.
+- While Pi-hole is tremendously powerful, it is limited to DNS blocking so it won't prevent ads embedded in applications. It also isn't an ideal solution for partial DNS blocking so it won't effectively block Youtube ads.
 
 ---
 <a name="Roadmap"></a>
 ## Roadmap
 
 *Encryption and security*
-- Add [unbound](https://nlnetlabs.nl/projects/unbound/about/) for additional security and privacy.
-
-<a href="https://nlnetlabs.nl/projects/unbound/about/"><img src="./images/unbound.png" width="120"></a>
-
 - SSL with AWS Certificate manager in the CloudFormation template.
 
 <a href="https://aws.amazon.com/certificate-manager/"><img src="./images/CertificateManager.png" width="120"></a>
@@ -242,15 +286,12 @@ These are the parameters used by the stack. Some are optional depending on your 
 I'm using the following Docker containers in this project:
 - [pschiffe/docker-openvpn](https://github.com/pschiffe/docker-openvpn) which is based on [kylemanna/docker-openvpn](https://github.com/kylemanna/docker-openvpn)
 - [pihole/pihole](https://github.com/pi-hole/docker-pi-hole)
+- [klutchell/unbound](https://github.com/klutchell/unbound)
 - [v2tec/watchtower](https://github.com/v2tec/watchtower)
 
 I found a number of valuable sources when researching this project:
 
-- This issue describes how to configure split tunnel for DNS routing.
-https://github.com/kylemanna/docker-openvpn/issues/288
-
-- This is a 3 part series on creating an OpenVPN CloudFormation template and was the original base for my template.
-https://zugdud.io/index.php/2017/11/16/automate-the-creation-of-a-basic-vpc-with-cloudformation/
-
-- This is a pi-hole CloudFormation template that inspired me to containerize everything.
-https://blog.observian.com/cloudformation-pi-hole-and-you
+- The [Pi-hole Documentation](https://docs.pi-hole.net/) has proven to be an extremely valuable resource for information on creating VPN tunnels and recursive DNS.
+- [This issue](https://github.com/kylemanna/docker-openvpn/issues/288) describes how to configure split tunnel for DNS routing.
+- [This blog](https://zugdud.io/index.php/2017/11/16/automate-the-creation-of-a-basic-vpc-with-cloudformation/) is a 3 part series on creating an OpenVPN CloudFormation template and was the original base for my template.
+- [This blog](https://blog.observian.com/cloudformation-pi-hole-and-you) is a pi-hole CloudFormation template that inspired me to containerize everything.
