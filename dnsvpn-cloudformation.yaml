@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: DNSVPN Stack v2.5
+Description: DNSVPN Stack v2.6
 
 Parameters:
   PiHolePassword:
@@ -496,13 +496,11 @@ Resources:
             01_create_bridge:
               command: "docker network create -d bridge --subnet 172.21.0.0/29 dns"
             02_run_unbound:
-              command: !Sub "docker run -d --ulimit nofile=10000:10000 --network=dns --ip=172.21.0.2 --name unbound  --cap-add=NET_ADMIN -e TZ=${TimeZone} klutchell/unbound"
+              command: "docker run -d --ulimit nofile=10000:10000 --network=dns --ip=172.21.0.2 -e DO_IPV6=no -e INTERFACE=172.21.0.2 --name unbound --restart=unless-stopped folhabranca/unbound"
             03_run_pihole:
-              command: !Sub "docker run -d --network=dns --ip=172.21.0.3 --name pihole -p 53:53/tcp -p 53:53/udp -p 80:80 -e DNS1=172.21.0.2 -e DNS2=no -e TZ=${TimeZone} -e ServerIP=${myEIP} -e VIRTUAL_HOST=${myDNSRecord} -e WEBPASSWORD=${PiHolePassword} -e DNSMASQ_LISTENING=local --restart=unless-stopped --cap-add=NET_ADMIN --dns=127.0.0.1 --dns=1.1.1.1 -v /mnt/dockershare/pihole:/etc/pihole -v /mnt/dockershare/dnsmasq.d:/etc/dnsmasq.d pihole/pihole"
+              command: !Sub "docker run -d --network=dns --ip=172.21.0.3 --name pihole -v /mnt/dockershare/pihole:/etc/pihole -v /mnt/dockershare/dnsmasq.d:/etc/dnsmasq.d -p 53:53/tcp -p 53:53/udp -p 80:80 -e DNS1=172.21.0.2 -e DNS2=no -e TZ=${TimeZone} -e VIRTUAL_HOST=${myDNSRecord} -e WEBPASSWORD=${PiHolePassword} -e DNSMASQ_LISTENING=local --dns=127.0.0.1 --dns=172.21.0.2 --cap-add=NET_ADMIN --restart=unless-stopped pihole/pihole"
             04_run_openvpn:
               command: !Sub "docker run -d --network=dns --ip=172.21.0.4 -v /mnt/dockershare/ovpn-data:/etc/openvpn -p ${OpenVPNPort}:1194/udp --cap-add=NET_ADMIN --name openvpn --restart=unless-stopped pschiffe/openvpn"
-            05_run_watchtower:
-              command: "docker run -d --network=dns --ip=172.21.0.5 --name watchtower -v /var/run/docker.sock:/var/run/docker.sock --restart=unless-stopped v2tec/watchtower --cleanup -s \"0 0 * * 1\""
 # Generate client keys
 # This only runs if you're not reusing prior keys.
         generate_client_key:

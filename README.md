@@ -33,6 +33,10 @@ Based on the DevOps theory of infrastructure as code, this AWS CloudFormation te
 
 <a name="Progress"></a>
 #### Project Progress
+- 2.6 update:
+  - Updated nodejs version to 8.10.
+  - Removed watchtower.
+  - Switched to the folhabranca/unbound Docker container.
 - 2.5 update:
   - Added an Unbound DNS resolver with DNSSEC validation and EDNS.
   - Created quick-create link.
@@ -84,10 +88,6 @@ Pi-hole is an open source dns server that acts as a relay and blocks ads based o
  <a href="https://openvpn.net/"><img src="./images/openvpn.png" width="120" align="right"></a>
 <br>
 OpenVPN is the standard in open source VPN tunnels. This project configures it as a split tunnel so it only routes DNS queries and allows you to maintain optimal performance for all other network communications.
-
-<a href="https://github.com/v2tec/watchtower"><img src="./images/container.png" width="120" align="left"></a>
-<br><br>
-Watchtower monitors the docker repository for changes and restarts the containers so that the stack remains updated.
 <br><br><br><br>
 <a name="Resolver"></a>
 #### A Note About Open Resolvers
@@ -286,8 +286,7 @@ After setup is complete and you have successfully tunneled into the stack, you c
 I'm using the following Docker containers in this project:
 - [pschiffe/docker-openvpn](https://github.com/pschiffe/docker-openvpn) which is based on [kylemanna/docker-openvpn](https://github.com/kylemanna/docker-openvpn)
 - [pihole/pihole](https://github.com/pi-hole/docker-pi-hole)
-- [klutchell/unbound](https://github.com/klutchell/unbound)
-- [v2tec/watchtower](https://github.com/v2tec/watchtower)
+- [folhabranca/unbound](https://github.com/folhabranca/docker-unbound)
 
 I found a number of valuable sources when researching this project:
 
