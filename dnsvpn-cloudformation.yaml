@@ -50,7 +50,7 @@ Parameters:
     Description: Your web address when connecting to Pi-hole
   EC2InstanceType:
     Type: String
-    Default: t3.nano
+    Default: t3a.nano
     Description: The default is the cheapest option. If you are in the 12 month free teir then a t2.micro may be more cost effective.
 # Availability zone for the subnet where the EC2 instance will be created.
   SubnetAZ:
