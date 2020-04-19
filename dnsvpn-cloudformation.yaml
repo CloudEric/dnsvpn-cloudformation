@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: DNSVPN Stack v2.6
+Description: DNSVPN Stack v2.6.1
 
 Parameters:
   PiHolePassword:
